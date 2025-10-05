@@ -5,6 +5,16 @@ import React from 'react';
 const ROWS = 200; // Filas hacia abajo
 const COLS = 70;  // Columnas hacia la derecha (A hasta BR)
 
+// Tipo para almacenar los estilos de una celda
+interface CellStyle {
+  fontWeight?: 'bold' | 'normal';
+  fontStyle?: 'italic' | 'normal';
+  textDecoration?: 'underline' | 'none';
+  textAlign?: 'left' | 'center' | 'right';
+  backgroundColor?: string;
+  color?: string;
+}
+
 // Tipo para almacenar los datos de la hoja de cálculo
 interface SheetData {
   [key: string]: string; // Clave: "A1", "B2", Valor: Contenido o fórmula
@@ -45,6 +55,8 @@ const FUNCTION_REGEX = /(SUMA|PROMEDIO)\(([^)]+)\)/g;
 // --- Componente PacurHoja ---
 const PacurHoja: React.FC = () => {
   const [data, setData] = useState<SheetData>({});
+  // Nuevo estado para los estilos de celda
+  const [cellStyles, setCellStyles] = useState<{ [key: string]: CellStyle }>({});
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<RibbonTab>('Inicio');
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -53,6 +65,10 @@ const PacurHoja: React.FC = () => {
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ 
     visible: false, x: 0, y: 0, targetType: 'cell', cellKey: null 
   });
+
+  // Estado para los selectores de color
+  const [selectedFillColor, setSelectedFillColor] = useState<string>('#4d4d4d'); 
+  const [selectedTextColor, setSelectedTextColor] = useState<string>('#ffffff'); 
   
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
 
@@ -174,6 +190,48 @@ const PacurHoja: React.FC = () => {
     });
   };
 
+  // --- Lógica de Aplicación de Estilo ---
+
+  /**
+   * Aplica un estilo al activeCell, manejando el toggle para N, K, S.
+   */
+  const applyStyleToActiveCell = (styleKey: keyof CellStyle, value: string | undefined) => {
+    if (!activeCell) {
+        showMessageBox("Selecciona una celda primero para aplicar formato.", true);
+        return;
+    }
+
+    setCellStyles(prevStyles => {
+        const currentStyle = prevStyles[activeCell] || {};
+        
+        // Manejar el toggle para Negrita, Cursiva, Subrayado
+        if (styleKey === 'fontWeight' || styleKey === 'fontStyle' || styleKey === 'textDecoration') {
+            // Si el valor actual es el mismo que el nuevo valor (ej. 'bold' y quieres 'bold'), lo desactiva.
+            const currentValue = currentStyle[styleKey] === value; 
+            const newValue = currentValue 
+                ? (styleKey === 'fontWeight' ? 'normal' : 'none') // Desactivar
+                : value; // Activar
+            
+            return {
+                ...prevStyles,
+                [activeCell]: {
+                    ...currentStyle,
+                    [styleKey]: newValue
+                }
+            };
+        }
+        
+        // Manejar la configuración directa (Alineación, Colores)
+        return {
+            ...prevStyles,
+            [activeCell]: {
+                ...currentStyle,
+                [styleKey]: value
+            }
+        };
+    });
+  };
+
   /**
    * Resuelve el valor de una celda, buscando referencias circulares si es necesario, 
    * y soporta funciones como SUMA y PROMEDIO.
@@ -286,7 +344,37 @@ const PacurHoja: React.FC = () => {
   };
 
   const handleToolbarAction = (action: string) => {
-    showMessageBox(`Acción: ${action} - (Lógica no implementada)`, action.includes("Error"));
+    switch (action) {
+        case 'Negrita':
+            applyStyleToActiveCell('fontWeight', 'bold');
+            break;
+        case 'Cursiva':
+            applyStyleToActiveCell('fontStyle', 'italic');
+            break;
+        case 'Subrayado':
+            applyStyleToActiveCell('textDecoration', 'underline');
+            break;
+        case 'Alinear Izquierda':
+            applyStyleToActiveCell('textAlign', 'left');
+            break;
+        case 'Alinear Centro':
+            applyStyleToActiveCell('textAlign', 'center');
+            break;
+        case 'Alinear Derecha':
+            applyStyleToActiveCell('textAlign', 'right');
+            break;
+        case 'Color de Relleno':
+            // El color ya se actualiza en el input onChange, aquí solo aseguramos la aplicación
+            applyStyleToActiveCell('backgroundColor', selectedFillColor);
+            break;
+        case 'Color de Fuente':
+            // El color ya se actualiza en el input onChange, aquí solo aseguramos la aplicación
+            applyStyleToActiveCell('color', selectedTextColor);
+            break;
+        default:
+            showMessageBox(`Acción: ${action} - (Lógica no implementada)`, action.includes("Error"));
+            break;
+    }
   };
   
   const handleContextMenuItemClick = (action: string) => {
@@ -299,8 +387,9 @@ const PacurHoja: React.FC = () => {
 
   // --- Contenido del Ribbon para cada Pestaña ---
   const renderRibbonContent = () => {
-    // (Contenido del Ribbon simplificado para mantener el foco en la hoja)
-    // El código completo del ribbon anterior se mantiene en los estilos y estructura.
+    // Obtenemos los estilos de la celda activa para resaltar los botones
+    const currentStyle = activeCell ? cellStyles[activeCell] || {} : {};
+
     switch (activeTab) {
       case 'Inicio':
         return (
@@ -316,6 +405,7 @@ const PacurHoja: React.FC = () => {
                 </div>
                 <div className="group-label">Portapapeles</div>
             </div>
+            
             {/* GRUPO: FUENTE (Inicio) */}
             <div className="toolbar-group">
                 <div className="horizontal-group input-row">
@@ -323,15 +413,105 @@ const PacurHoja: React.FC = () => {
                     <select defaultValue="11" title="Tamaño" className="size-select"><option>11</option></select>
                 </div>
                 <div className="horizontal-group">
-                    <button onClick={() => handleToolbarAction("Negrita")} title="Negrita"><b>N</b></button>
-                    <button onClick={() => handleToolbarAction("Color Fuente")} title="Color Fuente" style={{color: 'red'}}>🅰️</button>
+                    {/* Botón Negrita */}
+                    <button 
+                        onClick={() => handleToolbarAction("Negrita")} 
+                        title="Negrita (Ctrl+N)"
+                        className={currentStyle.fontWeight === 'bold' ? 'active-style' : ''}
+                    >
+                        <b>N</b>
+                    </button>
+                    {/* Botón Cursiva */}
+                    <button 
+                        onClick={() => handleToolbarAction("Cursiva")} 
+                        title="Cursiva (Ctrl+K)"
+                        className={currentStyle.fontStyle === 'italic' ? 'active-style' : ''}
+                    >
+                        <i>K</i>
+                    </button>
+                    {/* Botón Subrayado */}
+                    <button 
+                        onClick={() => handleToolbarAction("Subrayado")} 
+                        title="Subrayado (Ctrl+S)"
+                        className={currentStyle.textDecoration === 'underline' ? 'active-style' : ''}
+                    >
+                        <u>S</u>
+                    </button>
+                    
+                    {/* Color de Relleno (Input de color oculto) */}
+                    <div className="color-picker-wrapper">
+                        <input 
+                            type="color" 
+                            value={selectedFillColor} 
+                            onChange={(e) => {
+                                setSelectedFillColor(e.target.value); 
+                                applyStyleToActiveCell('backgroundColor', e.target.value);
+                            }}
+                            className="color-input"
+                            id="fillColorPicker"
+                        />
+                        <button 
+                            onClick={() => document.getElementById('fillColorPicker')?.click()} 
+                            title="Color de Relleno" 
+                            style={{backgroundColor: currentStyle.backgroundColor || selectedFillColor}} 
+                            className="color-button"
+                        >
+                            🎨
+                        </button>
+                    </div>
+
+                    {/* Color de Fuente (Input de color oculto) */}
+                    <div className="color-picker-wrapper">
+                         <input 
+                            type="color" 
+                            value={selectedTextColor} 
+                            onChange={(e) => {
+                                setSelectedTextColor(e.target.value); 
+                                applyStyleToActiveCell('color', e.target.value);
+                            }}
+                            className="color-input"
+                            id="textColorPicker"
+                        />
+                        <button 
+                            onClick={() => document.getElementById('textColorPicker')?.click()} 
+                            title="Color de Fuente" 
+                            style={{color: currentStyle.color || selectedTextColor}} 
+                            className="color-button text-color-button"
+                        >
+                            🅰️
+                        </button>
+                    </div>
                 </div>
                 <div className="group-label">Fuente</div>
             </div>
+            
             {/* GRUPO: ALINEACIÓN (Inicio) */}
             <div className="toolbar-group">
                 <div className="vertical-group">
-                    <button onClick={() => handleToolbarAction("Centrar")} title="Centrar">☰</button>
+                    {/* Alinear Izquierda */}
+                    <button 
+                        onClick={() => handleToolbarAction("Alinear Izquierda")} 
+                        title="Alinear texto a la izquierda"
+                        className={currentStyle.textAlign === 'left' ? 'active-style' : ''}
+                    >
+                        &#x2261; {/* Símbolo de alineación izquierda */}
+                    </button>
+                    {/* Alinear Centro */}
+                    <button 
+                        onClick={() => handleToolbarAction("Alinear Centro")} 
+                        title="Centrar texto"
+                        className={currentStyle.textAlign === 'center' ? 'active-style' : ''}
+                    >
+                        &#x2263; {/* Símbolo de alineación centrada */}
+                    </button>
+                    {/* Alinear Derecha */}
+                    <button 
+                        onClick={() => handleToolbarAction("Alinear Derecha")} 
+                        title="Alinear texto a la derecha"
+                        className={currentStyle.textAlign === 'right' ? 'active-style' : ''}
+                    >
+                        &#x2261; {/* Símbolo de alineación derecha, reutilizando el símbolo */}
+                    </button>
                 </div>
                 <div className="group-label">Alineación</div>
             </div>
@@ -499,7 +679,7 @@ const PacurHoja: React.FC = () => {
             margin: 1px;
             border-radius: 3px;
             cursor: pointer;
-            transition: background-color 0.1s;
+            transition: background-color 0.1s, color 0.1s; /* Añadir transición de color */
         }
 
         .toolbar-group button:hover {
@@ -533,6 +713,41 @@ const PacurHoja: React.FC = () => {
         .font-select { width: 120px; }
         .size-select { width: 50px; }
         .number-select { width: 90px; }
+
+        /* Estilos para Botones de Formato Activos (N, K, S, Alineación) */
+        .active-style {
+            background-color: var(--excel-active-tab) !important;
+            border-color: var(--excel-active-tab) !important;
+        }
+        
+        /* Estilos para Selectores de Color */
+        .color-picker-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 5px;
+        }
+
+        .color-input {
+            position: absolute;
+            width: 0;
+            height: 0;
+            opacity: 0;
+            pointer-events: none; /* Asegura que el botón reciba el clic */
+        }
+
+        .color-button {
+            padding: 5px 8px !important; 
+            font-size: 1rem !important;
+            line-height: 1 !important;
+            transition: none !important;
+        }
+        
+        .text-color-button {
+            font-size: 1.2rem !important;
+            font-weight: bold;
+        }
 
 
         /* 2. BARRA DE FÓRMULAS */
@@ -823,6 +1038,8 @@ const PacurHoja: React.FC = () => {
                                     className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''}`}
                                     onClick={() => setActiveCell(cellKey)}
                                     onContextMenu={(e) => handleContextMenu(e, 'cell', cellKey)}
+                                    // Aplicar estilos guardados a la celda
+                                    style={cellStyles[cellKey]}
                                 >
                                     {displayValue}
                                 </div>
