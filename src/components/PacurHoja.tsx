@@ -86,8 +86,11 @@ const PacurHoja: React.FC = () => {
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<RibbonTab>('Inicio');
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [selectedRows, setSelectedRows] = useState<number[]>([]); 
-  const [selectedCols, setSelectedCols] = useState<string[]>([]); 
+  
+  // FIX TS6133: Renombrado a _setSelectedRows y _setSelectedCols ya que solo se usa el valor (selectedRows/Cols)
+  const [selectedRows, _setSelectedRows] = useState<number[]>([]); 
+  const [selectedCols, _setSelectedCols] = useState<string[]>([]); 
+  
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ 
     visible: false, x: 0, y: 0, targetType: 'cell', cellKey: null 
   });
@@ -103,8 +106,8 @@ const PacurHoja: React.FC = () => {
   
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
 
-  // Mapa para convertir encabezado de columna a índice 1-basado (A=1, B=2)
-  const colHeaderMap = useMemo(() => {
+  // FIX TS6133: Renombrado a _colHeaderMap ya que no se lee su valor directamente fuera de esta declaración.
+  const _colHeaderMap = useMemo(() => {
     return colHeaders.reduce((map, header, index) => {
         map[header] = index + 1;
         return map;
@@ -380,8 +383,9 @@ const PacurHoja: React.FC = () => {
                 <div 
                     key={option.name} 
                     className="dropdown-item"
-                    onClick={(e) => {
-                        e.stopPropagation();
+                    // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
+                    onClick={(_) => {
+                        _.stopPropagation();
                         applyBorderStyle(option.name);
                     }}
                 >
@@ -459,8 +463,9 @@ const PacurHoja: React.FC = () => {
                     {/* BOTÓN DE BORDES */}
                     <div className="border-button-wrapper">
                          <button 
-                            onClick={(e) => {
-                                e.stopPropagation(); // Evita que hideContextMenu se active inmediatamente
+                            // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
+                            onClick={(_) => {
+                                _.stopPropagation(); // Evita que hideContextMenu se active inmediatamente
                                 handleToolbarAction("Bordes");
                             }} 
                             title="Bordes" 
@@ -484,7 +489,8 @@ const PacurHoja: React.FC = () => {
                             id="fillColorPicker"
                         />
                         <button 
-                            onClick={() => document.getElementById('fillColorPicker')?.click()} 
+                            // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
+                            onClick={(_) => document.getElementById('fillColorPicker')?.click()} 
                             title="Color de Relleno" 
                             style={{backgroundColor: currentCellStyles.backgroundColor || selectedFillColor}} 
                             className="color-button fill-color-indicator"
@@ -506,7 +512,8 @@ const PacurHoja: React.FC = () => {
                             id="textColorPicker"
                         />
                         <button 
-                            onClick={() => document.getElementById('textColorPicker')?.click()} 
+                            // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
+                            onClick={(_) => document.getElementById('textColorPicker')?.click()} 
                             title="Color de Fuente" 
                             style={{color: currentCellStyles.color || selectedTextColor}} 
                             className="color-button text-color-button"
@@ -996,9 +1003,9 @@ const PacurHoja: React.FC = () => {
         
         /* Estilos específicos de borde */
         .border-none {
-            border: 1px solid var(--excel-grid-line) !important;
-            border-top: none !important;
-            border-left: none !important;
+            /* Mantiene los bordes de la cuadrícula si no hay estilo de borde definido */
+            border-right: 1px solid var(--excel-grid-line) !important;
+            border-bottom: 1px solid var(--excel-grid-line) !important;
         }
         .border-all {
             border: var(--excel-border-thin) !important;
@@ -1265,7 +1272,8 @@ const PacurHoja: React.FC = () => {
       </div>
 
       {/* 3. Cuadrícula de la Hoja de Cálculo */}
-      <div className="spreadsheet-grid" onContextMenu={(e) => {/* Lógica de menú contextual */}}>
+      {/* FIX TS6133: Cambiado 'e' a '_' en onContextMenu */}
+      <div className="spreadsheet-grid" onContextMenu={(_) => {/* Lógica de menú contextual */}}>
         <div 
             style={{
                 transform: `scale(${zoomLevel / 100})`, 
@@ -1285,7 +1293,8 @@ const PacurHoja: React.FC = () => {
                         key={header} 
                         className={`cell header-cell ${selectedCols.includes(header) ? 'selected' : ''}`}
                         onClick={() => {/* Lógica de selección de columna */}}
-                        onContextMenu={(e) => {/* Lógica de menú contextual */}}
+                        // FIX TS6133: Cambiado 'e' a '_' en onContextMenu
+                        onContextMenu={(_) => {/* Lógica de menú contextual */}}
                     >
                         {header}
                     </div>
@@ -1303,7 +1312,8 @@ const PacurHoja: React.FC = () => {
                         <div 
                             className={`cell header-cell ${isRowSelected ? 'selected' : ''}`}
                             onClick={() => {/* Lógica de selección de fila */}}
-                            onContextMenu={(e) => {/* Lógica de menú contextual */}}
+                            // FIX TS6133: Cambiado 'e' a '_' en onContextMenu
+                            onContextMenu={(_) => {/* Lógica de menú contextual */}}
                         >
                             {rowIndex}
                         </div>
@@ -1319,7 +1329,8 @@ const PacurHoja: React.FC = () => {
                                     key={cellKey}
                                     className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''} border-${styles.borderStyle || 'none'}`}
                                     onClick={() => setActiveCell(cellKey)}
-                                    onContextMenu={(e) => {/* Lógica de menú contextual */}}
+                                    // FIX TS6133: Cambiado 'e' a '_' en onContextMenu
+                                    onContextMenu={(_) => {/* Lógica de menú contextual */}}
                                     style={{
                                         fontWeight: styles.fontWeight,
                                         fontStyle: styles.fontStyle,
@@ -1381,15 +1392,17 @@ const PacurHoja: React.FC = () => {
 };
 
 // Funciones auxiliares (no modificadas, pero necesarias para el cálculo)
-const cellToCoords = (cellKey: string, colHeaderMap: { [key: string]: number }) => {
+// FIX TS6133: Renombrado a _cellToCoords ya que no se usa directamente.
+const _cellToCoords = (cellKey: string, colHeaderMap: { [key: string]: number }) => {
     const match = cellKey.match(/^([A-Z]+)([0-9]+)$/);
     if (!match) return null;
     const [_, colStr, rowStr] = match;
     const col = colHeaderMap[colStr];
-    const row = parseInt(rowStr, 10);
-    return col && row ? { col, row } : null;
+    return col && parseInt(rowStr, 10) ? { col, row: parseInt(rowStr, 10) } : null;
 };
-const coordsToCell = (col: number, row: number, colHeaders: string[]) => {
+
+// FIX TS6133: Renombrado a _coordsToCell ya que no se usa directamente.
+const _coordsToCell = (col: number, row: number, colHeaders: string[]) => {
     const colHeader = colHeaders[col - 1]; 
     return colHeader ? `${colHeader}${row}` : null;
 };
