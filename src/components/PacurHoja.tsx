@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react'; // Solo se importa lo que se usa
+import React from 'react'; // Necesario para definir React.FC
 
 // Constantes para la cuadrícula
-const ROWS = 10; // 10 filas visibles
-const COLS = 5;  // 5 columnas (A a E)
+const ROWS = 50; // Aumentamos las filas para que se parezca a una hoja real
+const COLS = 15; // Aumentamos las columnas (A a O)
 
 // Tipo para almacenar los datos de la hoja de cálculo
 interface SheetData {
@@ -25,7 +26,7 @@ const PacurHoja: React.FC = () => {
   
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
 
-  // Función simple para manejar la entrada de datos en una celda
+  // Maneja la entrada de datos en una celda
   const handleCellChange = (key: string, value: string) => {
     setData(prevData => ({
       ...prevData,
@@ -33,19 +34,14 @@ const PacurHoja: React.FC = () => {
     }));
   };
 
-  // Función de CÁLCULO muy simple (solo suma)
+  // Función de CÁLCULO simple (solo para demostración de la interfaz)
   const calculateValue = (key: string): string => {
     const content = data[key] || '';
     
-    // Si la celda empieza con "=", asumimos que es una fórmula
     if (content.startsWith('=')) {
       try {
-        // Ejemplo de cálculo súper básico: =10+20
+        // En una implementación real, aquí se usaría un parser seguro, NO 'eval'
         const formula = content.substring(1);
-        
-        // **AQUÍ VA LA LÓGICA COMPLEJA DE PARSEO DE FÓRMULAS**
-        // Por ahora, solo evaluamos una expresión simple.
-        // ADVERTENCIA: Usar 'eval' directamente no es seguro en producción.
         const result = eval(formula); 
         return isNaN(result) ? '#ERROR' : result.toString();
         
@@ -53,14 +49,12 @@ const PacurHoja: React.FC = () => {
         return '#FÓRMULA_INVÁLIDA';
       }
     }
-    // Si no es una fórmula, devuelve el contenido
     return content;
   };
 
   // Función para guardar como .aph
   const saveSheet = () => {
     const filename = "hoja_calculo.aph";
-    // Convertimos los datos a una cadena JSON
     const content = JSON.stringify(data, null, 2); 
 
     const blob = new Blob([content], { type: 'application/json' }); 
@@ -77,8 +71,48 @@ const PacurHoja: React.FC = () => {
 
   return (
     <div className="pacur-hoja-container">
+      
+      {/* 1. Barra de Herramientas (Ribbon simplificado) */}
       <div className="toolbar">
-        {/* Celda de entrada para mostrar/editar la fórmula */}
+        {/* Herramientas de Fuente */}
+        <select defaultValue="Aptos Narrow" title="Fuente">
+            <option>Aptos Narrow</option>
+            <option>Arial</option>
+            <option>Calibri</option>
+        </select>
+        <select defaultValue="11" title="Tamaño">
+            <option>10</option>
+            <option>11</option>
+            <option>12</option>
+        </select>
+        <button onClick={() => alert("Negrita")} title="Negrita"><b>N</b></button>
+        <button onClick={() => alert("Cursiva")} title="Cursiva"><i>K</i></button>
+        <button onClick={() => alert("Subrayado")} title="Subrayado"><u>S</u></button>
+        
+        {/* Alineación */}
+        <button onClick={() => alert("Izquierda")} title="Alinear Izquierda">⏴</button>
+        <button onClick={() => alert("Centrar")} title="Centrar">☰</button>
+        <button onClick={() => alert("Derecha")} title="Alinear Derecha">⏵</button>
+
+        {/* Número y Estilos */}
+        <select defaultValue="General" title="Formato de Número">
+            <option>General</option>
+            <option>Número</option>
+            <option>Moneda</option>
+            <option>Porcentaje</option>
+        </select>
+        <button onClick={() => alert("Moneda")} title="Formato Moneda">$</button>
+        <button onClick={() => alert("Porcentaje")} title="Estilo Porcentual">%</button>
+        
+        {/* Botón de Guardar */}
+        <button onClick={saveSheet} title="Guardar como .aph">💾 Guardar</button>
+      </div>
+
+      {/* 2. Barra de Fórmulas */}
+      <div className="formula-bar">
+        <div className="cell-name-box">
+            {activeCell || 'A1'}
+        </div>
         <input 
             type="text" 
             placeholder="Fórmula o valor" 
@@ -86,11 +120,10 @@ const PacurHoja: React.FC = () => {
             onChange={(e) => activeCell && handleCellChange(activeCell, e.target.value)}
             className="formula-input"
         />
-        <button onClick={saveSheet} title="Guardar como .aph">💾 Guardar (.aph)</button>
       </div>
 
+      {/* 3. Cuadrícula de la Hoja de Cálculo */}
       <div className="spreadsheet-grid">
-        {/* Encabezados de columna */}
         <div className="header-row">
           <div className="cell header-cell corner-cell"></div>
           {colHeaders.map(header => (
@@ -98,13 +131,10 @@ const PacurHoja: React.FC = () => {
           ))}
         </div>
 
-        {/* Filas de datos */}
         {Array.from({ length: ROWS }, (_, rIndex) => (
           <div key={rIndex} className="data-row">
-            {/* Encabezado de fila */}
             <div className="cell header-cell">{(rIndex + 1)}</div>
             
-            {/* Celdas de datos */}
             {colHeaders.map(cHeader => {
               const cellKey = `${cHeader}${rIndex + 1}`;
               const displayValue = calculateValue(cellKey);
@@ -116,16 +146,15 @@ const PacurHoja: React.FC = () => {
                   onClick={() => setActiveCell(cellKey)}
                 >
                   {displayValue}
-                  {/* Campo de edición invisible, se activa con un doble click o al enfocar el input principal */}
                 </div>
               );
             })}
           </div>
         ))}
       </div>
-      <p className="nota-hoja">Nota: La lógica de cálculo es extremadamente simple (usa `eval`). Es el siguiente gran reto.</p>
     </div>
   );
 };
 
 export default PacurHoja;
+
