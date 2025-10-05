@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 // Carga de iconos de Font Awesome para el Ribbon
 // Necesitarás agregar esta línea a tu HTML principal si no usas una herramienta de empaquetado:
-// <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJ8yKzS0Qj1VlPstn3t0x12oN/cE2O/C/0P1uD2A" crossorigin="anonymous" referrerpolicy="no-referrer" />
+// <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.5/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJ8yKzS0Qj1VlPstn3t0x12oN/cE2O/C/0P1uD2A" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
 // --- TIPOS Y CONSTANTES ---
 
@@ -1216,10 +1216,12 @@ const PacurHoja: React.FC = () => {
                             ))}
                         </div>
 
-                        {/* Celdas de Datos */}
+                        {/* Celdas de Datos (¡CORREGIDO!) */}
                         <div className="flex flex-col">
-                            {Array.from({ length: DEFAULT_COLS }).map((_, col) => (
+                            {/* Bucle exterior: Filas */}
+                            {Array.from({ length: DEFAULT_ROWS }).map((_, row) => (
                                 <div key={row} className="flex">
+                                    {/* Bucle interior: Columnas */}
                                     {Array.from({ length: DEFAULT_COLS }).map((_, col) => (
                                         <Cell
                                             key={col}
