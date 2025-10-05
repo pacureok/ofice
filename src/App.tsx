@@ -1,10 +1,10 @@
-import { useState } from 'react'; // <--- CORRECCIÓN: Cambiar la importación de React
+import { useState } from 'react'; // Solo se importa lo que se usa (useState)
 import PacurDoc from './components/PacurDoc';
 import PacurHoja from './components/PacurHoja'; 
 import './App.css'; 
 
 function App() {
-  // Estado para simular el enrutamiento
+  // Estado para simular el enrutamiento (home, doc, o sheet)
   const [currentPage, setCurrentPage] = useState<'home' | 'doc' | 'sheet'>('home');
 
   const renderContent = () => {
@@ -39,7 +39,7 @@ function App() {
     <div className="app-container">
       <header className="app-header">
         <h1 onClick={() => setCurrentPage('home')} style={{cursor: 'pointer'}}>
-          Pacur Suite Ofimática
+          pacur1workspace
         </h1>
       </header>
       
