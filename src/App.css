@@ -1,0 +1,181 @@
+/* --- Estilos Globales y de la Aplicación --- */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+.app-header {
+    background-color: #2b5797; /* Azul corporativo */
+    color: white;
+    padding: 15px 30px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.app-main {
+    padding: 30px;
+}
+
+/* --- Estilos del Menú Principal (Home) --- */
+.menu-principal {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    padding: 50px;
+}
+
+.opcion {
+    background-color: white;
+    border: 1px solid #ddd;
+    padding: 30px;
+    width: 350px;
+    text-align: center;
+    border-radius: 8px;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+}
+
+.opcion:hover {
+    transform: translateY(-5px);
+}
+
+.boton-acceso {
+    display: block;
+    width: 100%;
+    background-color: #0078d4;
+    color: white;
+    border: none;
+    padding: 12px 0;
+    text-decoration: none;
+    border-radius: 4px;
+    margin-top: 20px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s;
+}
+
+.boton-acceso:hover {
+    background-color: #005a9e;
+}
+
+.boton-acceso.deshabilitado {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+/* --- Estilos Comunes de la Barra de Herramientas --- */
+.toolbar {
+    background-color: #e6e6e6;
+    padding: 8px 30px;
+    border-bottom: 1px solid #ccc;
+    display: flex;
+    gap: 10px;
+}
+
+.toolbar button {
+    background-color: white;
+    border: 1px solid #ccc;
+    padding: 6px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 0.9rem;
+    transition: background-color 0.1s;
+}
+
+.toolbar button:hover {
+    background-color: #f0f0f0;
+}
+
+
+/* --- Estilos de PacurDoc (Editor de Documentos) --- */
+.editor-area {
+    min-height: 80vh;
+    padding: 40px;
+    background-color: white;
+    border: 1px solid #ddd;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.08);
+    line-height: 1.6;
+    margin: 20px auto;
+    max-width: 900px;
+    outline: none; /* Quitar el borde de enfoque del navegador */
+}
+
+/* --- Estilos de PacurHoja (Hoja de Cálculo) --- */
+
+.formula-input {
+    flex-grow: 1; /* Ocupa el espacio restante */
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-right: 15px;
+}
+
+.spreadsheet-grid {
+    display: inline-block; /* Contenedor de la cuadrícula */
+    border: 1px solid #aaa;
+    margin-top: 20px;
+    background-color: white;
+    overflow-x: auto; /* Permite scroll horizontal */
+}
+
+.header-row, .data-row {
+    display: flex;
+}
+
+.header-row {
+    background-color: #e0e0e0;
+    font-weight: bold;
+}
+
+.data-row:nth-child(even) {
+    background-color: #f8f8f8;
+}
+
+.cell {
+    width: 100px;
+    min-width: 100px;
+    height: 25px;
+    line-height: 25px;
+    border-right: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+    text-align: right;
+    padding: 0 5px;
+    overflow: hidden;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.header-cell {
+    width: 30px;
+    min-width: 30px;
+    text-align: center;
+    background-color: #c0c0c0;
+    border-color: #aaa;
+    color: #444;
+}
+
+.corner-cell {
+    background-color: #c0c0c0;
+}
+
+.data-cell {
+    text-align: left;
+}
+
+.data-cell.active {
+    outline: 2px solid #0078d4; /* Borde azul para celda activa */
+    outline-offset: -2px;
+}
+
+.nota-hoja {
+    margin-top: 15px;
+    font-size: 0.85rem;
+    color: #888;
+}
