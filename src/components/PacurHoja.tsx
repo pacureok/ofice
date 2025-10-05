@@ -699,7 +699,8 @@ const PacurHoja: React.FC = () => {
             </button>
         );
 
-        const renderDropdown = (label: string, items: { label: string, action: () => void }[], iconName: string) => {
+        // [CORRECCIÓN]: Se eliminó el parámetro 'iconName' no utilizado.
+        const renderDropdown = (label: string, items: { label: string, action: () => void }[], primaryIconName: string) => {
              const [isOpen, setIsOpen] = useState(false);
              const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -721,7 +722,7 @@ const PacurHoja: React.FC = () => {
                          className="p-2 rounded-md hover:bg-gray-600 text-gray-200 flex items-center"
                          onClick={() => setIsOpen(!isOpen)}
                      >
-                         <i className={`fas fa-${iconName}`}></i>
+                         <i className={`fas fa-${primaryIconName}`}></i> {/* Usamos el primaryIconName en su lugar */}
                          <i className="fas fa-caret-down ml-1 text-xs"></i>
                      </button>
                      {isOpen && (
@@ -741,7 +742,7 @@ const PacurHoja: React.FC = () => {
              );
         };
 
-        const renderColorPicker = (label: string, iconName: string, styleKey: 'backgroundColor' | 'color') => {
+        const renderColorPicker = (label: string, styleKey: 'backgroundColor' | 'color') => {
             const [color, setColor] = useState(currentStyles[styleKey] || '#ffffff');
             const colorRef = useRef<HTMLInputElement>(null);
 
@@ -823,9 +824,9 @@ const PacurHoja: React.FC = () => {
                                 { label: 'Borde exterior grueso', action: () => applyStyleToActiveCell('borderStyle', 'thickOutside') },
                             ], 'border-all')}
                             {/* Color de Relleno */}
-                            {renderColorPicker('Color de Relleno', 'fill-drip', 'backgroundColor')}
+                            {renderColorPicker('Color de Relleno', 'backgroundColor')}
                             {/* Color de Fuente */}
-                            {renderColorPicker('Color de Fuente', 'a', 'color')}
+                            {renderColorPicker('Color de Fuente', 'color')}
                         </div>
                         <span className="text-xs text-gray-400 mt-1">Fuente</span>
                     </div>
