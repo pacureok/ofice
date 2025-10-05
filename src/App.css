@@ -1,17 +1,19 @@
-/* --- Estilos Globales y de la Aplicación --- */
+/* --- Estilos Globales: Tema Oscuro (Dark Mode) --- */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f4f7f6;
-    color: #333;
+    background-color: #212121; /* Fondo muy oscuro */
+    color: #f0f0f0; /* Texto claro */
 }
 
+/* --- Estilos de la Aplicación y Encabezado --- */
 .app-header {
-    background-color: #2b5797; /* Azul corporativo */
+    background-color: #2f2f2f; /* Barra de título y navegación */
     color: white;
     padding: 15px 30px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid #3a3a3a;
 }
 
 .app-header h1 {
@@ -20,7 +22,7 @@ body {
 }
 
 .app-main {
-    padding: 30px;
+    padding: 0; /* Quitamos el padding para que la app se vea completa */
 }
 
 /* --- Estilos del Menú Principal (Home) --- */
@@ -32,13 +34,13 @@ body {
 }
 
 .opcion {
-    background-color: white;
-    border: 1px solid #ddd;
+    background-color: #3a3a3a; /* Fondo de las opciones */
+    border: 1px solid #555;
     padding: 30px;
     width: 350px;
     text-align: center;
     border-radius: 8px;
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
     transition: transform 0.2s;
 }
 
@@ -66,63 +68,77 @@ body {
 }
 
 .boton-acceso.deshabilitado {
-    background-color: #ccc;
+    background-color: #555;
     cursor: not-allowed;
 }
 
-/* --- Estilos Comunes de la Barra de Herramientas --- */
+/* --- Estilos de la Barra de Herramientas (Toolbar de PacurHoja y PacurDoc) --- */
 .toolbar {
-    background-color: #e6e6e6;
-    padding: 8px 30px;
-    border-bottom: 1px solid #ccc;
+    background-color: #2f2f2f;
+    padding: 8px 10px;
+    border-bottom: 1px solid #3a3a3a;
     display: flex;
+    align-items: center;
     gap: 10px;
+    flex-wrap: wrap; /* Permite que los elementos se muevan si la pantalla es pequeña */
 }
 
-.toolbar button {
-    background-color: white;
-    border: 1px solid #ccc;
+.toolbar button, .toolbar select {
+    background-color: #404040;
+    color: #f0f0f0;
+    border: 1px solid #555;
     padding: 6px 10px;
     cursor: pointer;
     border-radius: 3px;
     font-size: 0.9rem;
     transition: background-color 0.1s;
+    appearance: none; /* Estilos nativos para select */
 }
 
 .toolbar button:hover {
-    background-color: #f0f0f0;
+    background-color: #505050;
 }
 
-
-/* --- Estilos de PacurDoc (Editor de Documentos) --- */
-.editor-area {
-    min-height: 80vh;
-    padding: 40px;
-    background-color: white;
-    border: 1px solid #ddd;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.08);
-    line-height: 1.6;
-    margin: 20px auto;
-    max-width: 900px;
-    outline: none; /* Quitar el borde de enfoque del navegador */
+/* --- Barra de Fórmulas y Nombre de Celda (PacurHoja) --- */
+.formula-bar {
+    display: flex;
+    background-color: #2f2f2f;
+    padding: 8px 10px;
+    border-bottom: 1px solid #3a3a3a;
+    gap: 10px;
 }
 
-/* --- Estilos de PacurHoja (Hoja de Cálculo) --- */
+.cell-name-box {
+    width: 50px;
+    padding: 5px;
+    background-color: #404040;
+    border: 1px solid #555;
+    color: #f0f0f0;
+    text-align: center;
+    font-weight: bold;
+}
 
 .formula-input {
-    flex-grow: 1; /* Ocupa el espacio restante */
+    flex-grow: 1;
     padding: 5px 10px;
-    border: 1px solid #ccc;
+    background-color: #404040;
+    border: 1px solid #555;
+    color: #f0f0f0;
     border-radius: 3px;
-    margin-right: 15px;
+}
+
+/* --- Estilos de PacurHoja (Cuadrícula Excel) --- */
+
+.pacur-hoja-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .spreadsheet-grid {
-    display: inline-block; /* Contenedor de la cuadrícula */
-    border: 1px solid #aaa;
-    margin-top: 20px;
-    background-color: white;
-    overflow-x: auto; /* Permite scroll horizontal */
+    flex-grow: 1;
+    overflow: auto; /* Scroll para la cuadrícula */
+    background-color: #3a3a3a;
 }
 
 .header-row, .data-row {
@@ -130,12 +146,15 @@ body {
 }
 
 .header-row {
-    background-color: #e0e0e0;
+    background-color: #353535;
     font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
 .data-row:nth-child(even) {
-    background-color: #f8f8f8;
+    background-color: #212121;
 }
 
 .cell {
@@ -143,39 +162,53 @@ body {
     min-width: 100px;
     height: 25px;
     line-height: 25px;
-    border-right: 1px solid #ccc;
-    border-bottom: 1px solid #ccc;
-    text-align: right;
+    border-right: 1px solid #4a4a4a;
+    border-bottom: 1px solid #4a4a4a;
+    text-align: left;
     padding: 0 5px;
     overflow: hidden;
     white-space: nowrap;
     cursor: pointer;
+    box-sizing: border-box;
 }
 
 .header-cell {
-    width: 30px;
-    min-width: 30px;
+    width: 40px; /* Un poco más ancho para el número de fila */
+    min-width: 40px;
     text-align: center;
-    background-color: #c0c0c0;
-    border-color: #aaa;
-    color: #444;
+    background-color: #353535;
+    border-color: #4a4a4a;
+    color: #ccc;
+    position: sticky;
+    left: 0;
+    z-index: 20;
+}
+.header-cell:first-child {
+    z-index: 30; /* La esquina superior izquierda */
 }
 
 .corner-cell {
-    background-color: #c0c0c0;
-}
-
-.data-cell {
-    text-align: left;
+    background-color: #353535;
 }
 
 .data-cell.active {
-    outline: 2px solid #0078d4; /* Borde azul para celda activa */
+    outline: 2px solid #ffaa00; /* Borde naranja/amarillo para la celda activa */
     outline-offset: -2px;
 }
+.data-cell {
+    background-color: #212121;
+}
 
-.nota-hoja {
-    margin-top: 15px;
-    font-size: 0.85rem;
-    color: #888;
+/* --- Estilos de PacurDoc (Editor de Documentos) --- */
+.editor-area {
+    min-height: 80vh;
+    padding: 40px;
+    background-color: #1a1a1a;
+    border: 1px solid #4a4a4a;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+    line-height: 1.6;
+    margin: 20px auto;
+    max-width: 900px;
+    outline: none;
+    color: #f0f0f0;
 }
