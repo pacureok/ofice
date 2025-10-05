@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PacurDoc - Editor de Documentos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="toolbar">
+            <button onclick="formatDoc('bold')" title="Negrita"><b>B</b></button>
+            <button onclick="formatDoc('italic')" title="Cursiva"><i>I</i></button>
+            <button onclick="formatDoc('underline')" title="Subrayado"><u>U</u></button>
+            <button onclick="saveDoc()" title="Guardar como .apd">💾 Guardar (.apd)</button>
+            </div>
+    </header>
+    <main class="editor-main">
+        <div id="editor" contenteditable="true" spellcheck="true">
+            <h1>Escribe tu documento aquí</h1>
+            <p>Este es el área de edición de **PacurDoc**. Puedes escribir, formatear y guardar tu trabajo.</p>
+        </div>
+    </main>
+
+    <script>
+        // Función de formato (Negrita, Cursiva, Subrayado)
+        function formatDoc(command) {
+            document.execCommand(command, false, null);
+            document.getElementById('editor').focus();
+        }
+
+        // Función para guardar como archivo .apd
+        function saveDoc() {
+            const content = document.getElementById('editor').innerHTML;
+            const filename = "documento.apd"; // Por ahora, nombre fijo.
+
+            // 1. Crear un Blob (paquete de datos)
+            const blob = new Blob([content], { type: 'text/html' }); // Usamos HTML para guardar el formato
+
+            // 2. Crear un enlace de descarga
+            const a = document.createElement('a');
+            a.download = filename;
+            a.href = URL.createObjectURL(blob);
+            
+            // 3. Simular el clic para descargar
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            alert(`Documento guardado como ${filename}`);
+        }
+
+    </script>
+</body>
+</html>
