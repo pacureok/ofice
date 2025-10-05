@@ -87,7 +87,7 @@ const PacurHoja: React.FC = () => {
   const [activeTab, setActiveTab] = useState<RibbonTab>('Inicio');
   const [zoomLevel, setZoomLevel] = useState(100);
   
-  // FIX TS6133: Renombrado a _setSelectedRows y _setSelectedCols ya que solo se usa el valor (selectedRows/Cols)
+  // Se mantienen estos como se usan implícitamente en el componente
   const [selectedRows, _setSelectedRows] = useState<number[]>([]); 
   const [selectedCols, _setSelectedCols] = useState<string[]>([]); 
   
@@ -106,13 +106,8 @@ const PacurHoja: React.FC = () => {
   
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
 
-  // FIX TS6133: Renombrado a _colHeaderMap ya que no se lee su valor directamente fuera de esta declaración.
-  const _colHeaderMap = useMemo(() => {
-    return colHeaders.reduce((map, header, index) => {
-        map[header] = index + 1;
-        return map;
-    }, {} as { [key: string]: number });
-  }, [colHeaders]);
+  // ELIMINADA: La declaración de _colHeaderMap que no se utilizaba:
+  // const _colHeaderMap = useMemo(() => { ... }, [colHeaders]);
     
   // --- Lógica de Aplicación de Estilo ---
 
@@ -383,7 +378,6 @@ const PacurHoja: React.FC = () => {
                 <div 
                     key={option.name} 
                     className="dropdown-item"
-                    // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
                     onClick={(_) => {
                         _.stopPropagation();
                         applyBorderStyle(option.name);
@@ -463,7 +457,6 @@ const PacurHoja: React.FC = () => {
                     {/* BOTÓN DE BORDES */}
                     <div className="border-button-wrapper">
                          <button 
-                            // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
                             onClick={(_) => {
                                 _.stopPropagation(); // Evita que hideContextMenu se active inmediatamente
                                 handleToolbarAction("Bordes");
@@ -489,7 +482,6 @@ const PacurHoja: React.FC = () => {
                             id="fillColorPicker"
                         />
                         <button 
-                            // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
                             onClick={(_) => document.getElementById('fillColorPicker')?.click()} 
                             title="Color de Relleno" 
                             style={{backgroundColor: currentCellStyles.backgroundColor || selectedFillColor}} 
@@ -512,7 +504,6 @@ const PacurHoja: React.FC = () => {
                             id="textColorPicker"
                         />
                         <button 
-                            // FIX TS6133: Cambiado 'e' a '_' ya que no se usa el objeto evento.
                             onClick={(_) => document.getElementById('textColorPicker')?.click()} 
                             title="Color de Fuente" 
                             style={{color: currentCellStyles.color || selectedTextColor}} 
@@ -1272,7 +1263,6 @@ const PacurHoja: React.FC = () => {
       </div>
 
       {/* 3. Cuadrícula de la Hoja de Cálculo */}
-      {/* FIX TS6133: Cambiado 'e' a '_' en onContextMenu */}
       <div className="spreadsheet-grid" onContextMenu={(_) => {/* Lógica de menú contextual */}}>
         <div 
             style={{
@@ -1293,7 +1283,6 @@ const PacurHoja: React.FC = () => {
                         key={header} 
                         className={`cell header-cell ${selectedCols.includes(header) ? 'selected' : ''}`}
                         onClick={() => {/* Lógica de selección de columna */}}
-                        // FIX TS6133: Cambiado 'e' a '_' en onContextMenu
                         onContextMenu={(_) => {/* Lógica de menú contextual */}}
                     >
                         {header}
@@ -1312,7 +1301,6 @@ const PacurHoja: React.FC = () => {
                         <div 
                             className={`cell header-cell ${isRowSelected ? 'selected' : ''}`}
                             onClick={() => {/* Lógica de selección de fila */}}
-                            // FIX TS6133: Cambiado 'e' a '_' en onContextMenu
                             onContextMenu={(_) => {/* Lógica de menú contextual */}}
                         >
                             {rowIndex}
@@ -1329,7 +1317,6 @@ const PacurHoja: React.FC = () => {
                                     key={cellKey}
                                     className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''} border-${styles.borderStyle || 'none'}`}
                                     onClick={() => setActiveCell(cellKey)}
-                                    // FIX TS6133: Cambiado 'e' a '_' en onContextMenu
                                     onContextMenu={(_) => {/* Lógica de menú contextual */}}
                                     style={{
                                         fontWeight: styles.fontWeight,
@@ -1391,21 +1378,9 @@ const PacurHoja: React.FC = () => {
   );
 };
 
-// Funciones auxiliares (no modificadas, pero necesarias para el cálculo)
-// FIX TS6133: Renombrado a _cellToCoords ya que no se usa directamente.
-const _cellToCoords = (cellKey: string, colHeaderMap: { [key: string]: number }) => {
-    const match = cellKey.match(/^([A-Z]+)([0-9]+)$/);
-    if (!match) return null;
-    const [_, colStr, rowStr] = match;
-    const col = colHeaderMap[colStr];
-    return col && parseInt(rowStr, 10) ? { col, row: parseInt(rowStr, 10) } : null;
-};
+// Se elimina la función auxiliar _cellToCoords
+// Se elimina la función auxiliar _coordsToCell
 
-// FIX TS6133: Renombrado a _coordsToCell ya que no se usa directamente.
-const _coordsToCell = (col: number, row: number, colHeaders: string[]) => {
-    const colHeader = colHeaders[col - 1]; 
-    return colHeader ? `${colHeader}${row}` : null;
-};
 const parseRange = (range: string) => {
     // Para simplificar, esta función necesita acceso a colHeaderMap y colHeaders
     // En una implementación real se pasarían como argumentos. Aquí se mantiene como un stub para que compile.
