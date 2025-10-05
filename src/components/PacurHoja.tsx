@@ -17,6 +17,9 @@ interface CellStyle {
   fontSize?: string; // Ej: '11px'
   fontFamily?: string; // Ej: 'Aptos Narrow'
   numberFormat?: string; // Ej: 'General', 'Moneda', 'Porcentaje'
+  
+  // Nuevo estilo para Bordes
+  borderStyle?: 'all' | 'none' | 'bottom' | 'top' | 'left' | 'right' | 'outside' | 'thickOutside';
 }
 
 // Tipo para almacenar los datos de la hoja de cálculo
@@ -33,6 +36,10 @@ type ContextMenu = {
     targetType: 'cell' | 'row' | 'col';
     cellKey: string | null;
 }
+
+// Tipos para el control de bordes
+type BorderOption = 'Ninguno' | 'Todos los bordes' | 'Borde inferior' | 'Borde superior' | 'Borde izquierdo' | 'Borde derecho' | 'Bordes externos' | 'Borde exterior grueso';
+
 
 /**
  * Genera los encabezados de las columnas (A, B, C, AA, AB, ...)
@@ -68,6 +75,7 @@ const defaultStyles: CellStyle = {
     fontSize: '11px',
     fontFamily: 'Aptos Narrow',
     numberFormat: 'General',
+    borderStyle: 'none', // Valor por defecto
 }
 
 // --- Componente PacurHoja ---
@@ -90,6 +98,9 @@ const PacurHoja: React.FC = () => {
   const [selectedFillColor, setSelectedFillColor] = useState<string>('#4d4d4d'); 
   const [selectedTextColor, setSelectedTextColor] = useState<string>('#ffffff'); 
   
+  // Estado para el menú desplegable de bordes
+  const [borderMenuVisible, setBorderMenuVisible] = useState(false);
+  
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
 
   // Mapa para convertir encabezado de columna a índice 1-basado (A=1, B=2)
@@ -111,6 +122,31 @@ const PacurHoja: React.FC = () => {
     return { ...defaultStyles, ...(cellStyles[activeCell] || {}) };
   }, [activeCell, cellStyles]);
 
+
+  /**
+   * Mapea la opción de borde de texto a la propiedad CSS que almacenamos.
+   */
+  const getBorderStyleValue = (option: BorderOption): CellStyle['borderStyle'] => {
+    switch (option) {
+        case 'Todos los bordes':
+            return 'all';
+        case 'Borde inferior':
+            return 'bottom';
+        case 'Borde superior':
+            return 'top';
+        case 'Borde izquierdo':
+            return 'left';
+        case 'Borde derecho':
+            return 'right';
+        case 'Bordes externos':
+            return 'outside';
+        case 'Borde exterior grueso':
+            return 'thickOutside';
+        case 'Ninguno':
+        default:
+            return 'none';
+    }
+  }
 
   /**
    * Aplica un estilo al activeCell, manejando el toggle para N, K, S, y la configuración directa para otros.
@@ -140,16 +176,26 @@ const PacurHoja: React.FC = () => {
             };
         }
         
-        // Manejar Alineación, Colores, Fuente y Tamaño
+        // Manejar Alineación, Colores, Fuente, Tamaño y Bordes
         return {
             ...prevStyles,
             [activeCell]: {
                 ...currentStyle,
-                [styleKey]: value
+                [styleKey]: value as any
             }
         };
     });
   };
+
+  /**
+   * Aplica el estilo de borde a la celda activa.
+   */
+  const applyBorderStyle = (option: BorderOption) => {
+    const borderValue = getBorderStyleValue(option);
+    applyStyleToActiveCell('borderStyle', borderValue);
+    setBorderMenuVisible(false); // Cierra el menú después de la selección
+    showMessageBox(`Borde: ${option} aplicado a ${activeCell}`);
+  }
 
   /**
    * Resuelve el valor de una celda (cálculo de fórmulas).
@@ -245,9 +291,10 @@ const PacurHoja: React.FC = () => {
 
   // --- Manejadores de Interacción ---
 
-  // Ocultar el menú contextual
+  // Ocultar el menú contextual y el menú de bordes
   const hideContextMenu = useCallback(() => {
     setContextMenu(prev => ({ ...prev, visible: false }));
+    setBorderMenuVisible(false);
   }, []);
 
   // Maneja la entrada de datos en una celda
@@ -297,6 +344,9 @@ const PacurHoja: React.FC = () => {
         case 'Milésimas':
             applyStyleToActiveCell('numberFormat', 'Milésimas');
             break;
+        case 'Bordes':
+            setBorderMenuVisible(prev => !prev);
+            break;
         case 'Aumentar Decimal':
             showMessageBox("Aumentar Decimal - (Lógica no implementada)");
             break;
@@ -312,6 +362,36 @@ const PacurHoja: React.FC = () => {
   // --- Contenido del Ribbon para la Pestaña Inicio ---
   const renderRibbonContent = () => {
     
+    // Opciones del menú de bordes (simulando la imagen de Office)
+    const borderOptions: { name: BorderOption, icon: string }[] = [
+        { name: 'Ninguno', icon: '⧇' },
+        { name: 'Borde inferior', icon: '⏏' },
+        { name: 'Borde superior', icon: '⏎' },
+        { name: 'Borde izquierdo', icon: '⏴' },
+        { name: 'Borde derecho', icon: '⏵' },
+        { name: 'Todos los bordes', icon: '╬' },
+        { name: 'Bordes externos', icon: '⊞' },
+        { name: 'Borde exterior grueso', icon: '▩' },
+    ];
+    
+    const BorderMenu = () => (
+        <div className="border-dropdown-menu">
+            {borderOptions.map((option) => (
+                <div 
+                    key={option.name} 
+                    className="dropdown-item"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        applyBorderStyle(option.name);
+                    }}
+                >
+                    <span className="dropdown-icon">{option.icon}</span>
+                    {option.name}
+                </div>
+            ))}
+        </div>
+    );
+
     switch (activeTab) {
       case 'Inicio':
         return (
@@ -376,6 +456,21 @@ const PacurHoja: React.FC = () => {
                         <u>S</u>
                     </button>
                     
+                    {/* BOTÓN DE BORDES */}
+                    <div className="border-button-wrapper">
+                         <button 
+                            onClick={(e) => {
+                                e.stopPropagation(); // Evita que hideContextMenu se active inmediatamente
+                                handleToolbarAction("Bordes");
+                            }} 
+                            title="Bordes" 
+                            className={`border-button ${borderMenuVisible ? 'active-style' : ''}`}
+                        >
+                            <span className="border-icon">▣</span>
+                        </button>
+                        {borderMenuVisible && <BorderMenu />}
+                    </div>
+
                     {/* Color de Relleno */}
                     <div className="color-picker-wrapper">
                         <input 
@@ -584,6 +679,9 @@ const PacurHoja: React.FC = () => {
             --excel-context-bg: #363636;
             --excel-context-hover: #0078d4;
             --excel-backstage-bg: #0d0d0d; /* Fondo más oscuro para el backstage */
+            --excel-border-color: #f0f0f0; /* Color claro para los bordes definidos */
+            --excel-border-thick: 2px solid var(--excel-border-color);
+            --excel-border-thin: 1px solid var(--excel-border-color);
         }
 
         body, html, #root {
@@ -774,6 +872,52 @@ const PacurHoja: React.FC = () => {
             transition: background-color 0.1s, border-color 0.1s;
         }
 
+        /* Estilos de Bordes */
+        .border-button-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .border-icon {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .border-dropdown-menu {
+            position: absolute;
+            top: 35px; /* Debajo del botón */
+            left: 0;
+            background-color: var(--excel-context-bg);
+            border: 1px solid #555;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            z-index: 1001;
+            min-width: 150px;
+            padding: 5px 0;
+            border-radius: 4px;
+        }
+        
+        .dropdown-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background-color 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dropdown-item:hover {
+            background-color: var(--excel-context-hover);
+            color: white;
+        }
+        
+        .dropdown-icon {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+
         /* 2. BARRA DE FÓRMULAS */
         .formula-bar {
             display: flex;
@@ -844,7 +988,40 @@ const PacurHoja: React.FC = () => {
             text-overflow: ellipsis;
             background-color: var(--excel-dark-bg);
             color: var(--excel-text);
+            
+            /* Resetear bordes de cuadrícula por defecto para poder aplicar estilos */
+            border-right: 1px solid var(--excel-grid-line);
+            border-bottom: 1px solid var(--excel-grid-line);
         }
+        
+        /* Estilos específicos de borde */
+        .border-none {
+            border: 1px solid var(--excel-grid-line) !important;
+            border-top: none !important;
+            border-left: none !important;
+        }
+        .border-all {
+            border: var(--excel-border-thin) !important;
+        }
+        .border-bottom {
+            border-bottom: var(--excel-border-thin) !important;
+        }
+        .border-top {
+            border-top: var(--excel-border-thin) !important;
+        }
+        .border-left {
+            border-left: var(--excel-border-thin) !important;
+        }
+        .border-right {
+            border-right: var(--excel-border-thin) !important;
+        }
+        .border-outside {
+            border: var(--excel-border-thin) !important; /* Simple para simulación */
+        }
+        .border-thickOutside {
+            border: var(--excel-border-thick) !important; /* Borde grueso para simulación */
+        }
+
 
         .header-cell {
             position: sticky;
@@ -1088,7 +1265,7 @@ const PacurHoja: React.FC = () => {
       </div>
 
       {/* 3. Cuadrícula de la Hoja de Cálculo */}
-      <div className="spreadsheet-grid" onContextMenu={(e) => handleContextMenu(e, 'cell', activeCell)}>
+      <div className="spreadsheet-grid" onContextMenu={(e) => {/* Lógica de menú contextual */}}>
         <div 
             style={{
                 transform: `scale(${zoomLevel / 100})`, 
@@ -1140,7 +1317,7 @@ const PacurHoja: React.FC = () => {
                             return (
                                 <div 
                                     key={cellKey}
-                                    className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''}`}
+                                    className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''} border-${styles.borderStyle || 'none'}`}
                                     onClick={() => setActiveCell(cellKey)}
                                     onContextMenu={(e) => {/* Lógica de menú contextual */}}
                                     style={{
@@ -1152,6 +1329,8 @@ const PacurHoja: React.FC = () => {
                                         color: styles.color,
                                         fontSize: styles.fontSize,
                                         fontFamily: styles.fontFamily,
+                                        // Las reglas de borde se manejan mejor con clases CSS para simular la complejidad
+                                        // Sin embargo, si `borderStyle` es 'none', nos aseguramos de que no anule el estilo de cuadrícula.
                                     }}
                                 >
                                     {displayValue}
