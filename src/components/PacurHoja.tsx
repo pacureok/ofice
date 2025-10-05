@@ -350,7 +350,8 @@ const PacurHoja: React.FC = () => {
 
   return (
     <div className="pacur-hoja-container">
-    <style jsx global>{`
+    {/* CORRECCIÓN: Se eliminó 'jsx global' para corregir el error de TypeScript/Build. */}
+    <style>{`
         /* Global Reset and Font */
         :root {
             --excel-dark-bg: #1e1e1e;
@@ -714,11 +715,10 @@ const PacurHoja: React.FC = () => {
             {/* Botones de Compartir/Comentarios */}
             <div style={{marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center'}}>
                 <button onClick={() => handleToolbarAction("Comentarios")} title="Comentarios">💬 Comentarios</button>
+                <button onClick={saveSheet} title="Guardar como .aph" style={{backgroundColor: '#0078d4'}}>💾</button>
                 <button onClick={() => handleToolbarAction("Compartir")} title="Compartir" style={{backgroundColor: '#107c41', color: 'white'}}>
                     📤 Compartir
                 </button>
-                {/* Botón de Guardar */}
-                <button onClick={saveSheet} title="Guardar como .aph" style={{backgroundColor: '#0078d4'}}>💾</button>
             </div>
         </div>
 
