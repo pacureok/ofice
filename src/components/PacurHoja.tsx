@@ -32,6 +32,8 @@ const getColHeaders = (count: number) => {
 
 // Expresión regular para encontrar referencias de celda (Ej: A1, B10, AA1)
 const CELL_REFERENCE_REGEX = /([A-Z]+[0-9]+)/g; 
+// Expresión regular para encontrar funciones de rango: SUMA(A1:B10) o PROMEDIO(C1)
+const FUNCTION_REGEX = /(SUMA|PROMEDIO)\(([^)]+)\)/g;
 
 // --- Componente PacurHoja ---
 const PacurHoja: React.FC = () => {
@@ -39,8 +41,71 @@ const PacurHoja: React.FC = () => {
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<RibbonTab>('Inicio'); // Pestaña activa
   const [zoomLevel, setZoomLevel] = useState(100); // Nivel de zoom para la barra de estado
+  const [selectedRows, setSelectedRows] = useState<number[]>([]); // Filas seleccionadas (índice 1-basado)
   
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
+
+  // Mapa para convertir encabezado de columna a índice 1-basado (A=1, B=2)
+  const colHeaderMap = useMemo(() => {
+    return colHeaders.reduce((map, header, index) => {
+        map[header] = index + 1;
+        return map;
+    }, {} as { [key: string]: number });
+  }, [colHeaders]);
+    
+  // --- Funciones de Asistencia de Rangos ---
+
+  /**
+   * Convierte la clave de celda (ej: "A1") a coordenadas 1-basadas (colIndex, rowIndex).
+   */
+  const cellToCoords = (cellKey: string): { col: number; row: number } | null => {
+      const match = cellKey.match(/^([A-Z]+)([0-9]+)$/);
+      if (!match) return null;
+      const [_, colStr, rowStr] = match;
+      const col = colHeaderMap[colStr];
+      const row = parseInt(rowStr, 10);
+      return col && row ? { col, row } : null;
+  };
+
+  /**
+   * Convierte coordenadas 1-basadas a la clave de celda (ej: "A1").
+   */
+  const coordsToCell = (col: number, row: number): string | null => {
+      const colHeader = colHeaders[col - 1]; // colHeaders is 0-indexed
+      return colHeader ? `${colHeader}${row}` : null;
+  };
+
+  /**
+   * Parsea un rango (ej: "A1:C3") en un array de claves de celda ["A1", "A2", ..., "C3"].
+   */
+  const parseRange = (range: string): string[] => {
+      const parts = range.split(':');
+      const startCellKey = parts[0];
+      const endCellKey = parts.length > 1 ? parts[1] : parts[0]; // Si es A1, el rango es solo A1
+      
+      const start = cellToCoords(startCellKey);
+      const end = cellToCoords(endCellKey);
+
+      if (!start || !end) return [];
+
+      const minCol = Math.min(start.col, end.col);
+      const maxCol = Math.max(start.col, end.col);
+      const minRow = Math.min(start.row, end.row);
+      const maxRow = Math.max(start.row, end.row);
+
+      const keys: string[] = [];
+      for (let c = minCol; c <= maxCol; c++) {
+          for (let r = minRow; r <= maxRow; r++) {
+              const cellKey = coordsToCell(c, r);
+              if (cellKey) {
+                  keys.push(cellKey);
+              }
+          }
+      }
+      return keys;
+  };
+
+  // --- Manejadores de Interacción ---
 
   // Maneja la entrada de datos en una celda
   const handleCellChange = (key: string, value: string) => {
@@ -49,10 +114,23 @@ const PacurHoja: React.FC = () => {
       [key]: value
     }));
   };
+  
+  // Maneja la selección de filas
+  const handleRowClick = (rowIndex: number) => {
+    setSelectedRows(prev => {
+        if (prev.includes(rowIndex)) {
+            // Deseleccionar
+            return prev.filter(r => r !== rowIndex);
+        } else {
+            // Seleccionar
+            return [...prev, rowIndex];
+        }
+    });
+  };
 
   /**
-   * Resuelve el valor de una celda, buscando referencias circulares si es necesario.
-   * Ahora soporta +, -, *, /, y ^ (exponenciación) con referencias a otras celdas.
+   * Resuelve el valor de una celda, buscando referencias circulares si es necesario, 
+   * y soporta funciones como SUMA y PROMEDIO.
    */
   const calculateValue = (key: string, path: string[] = []): string => {
     const content = data[key] || '';
@@ -67,24 +145,61 @@ const PacurHoja: React.FC = () => {
       return content;
     }
 
-    const formula = content.substring(1).trim();
+    let formula = content.substring(1).trim();
     
-    // 3. Sustituir referencias de celda por sus valores
+    // 3. Fase de Resolución de Funciones (SUMA, PROMEDIO)
+    formula = formula.replace(FUNCTION_REGEX, (match, funcName, rangeStr) => {
+        const rangeKeys = parseRange(rangeStr.trim());
+        const values: number[] = [];
+
+        for (const cellKey of rangeKeys) {
+            // Recursivamente calcular el valor de la celda en el rango
+            const valueStr = calculateValue(cellKey, [...path, key]);
+            const numValue = parseFloat(valueStr);
+
+            // Solo incluimos valores numéricos válidos
+            if (!isNaN(numValue) && isFinite(numValue)) {
+                values.push(numValue);
+            }
+        }
+        
+        if (values.length === 0) {
+            // Si no hay valores válidos, retorna 0 para evitar errores en la evaluación posterior
+            return '0';
+        }
+
+        const func = funcName.toUpperCase();
+        if (func === 'SUMA') {
+            const sum = values.reduce((a, b) => a + b, 0);
+            return sum.toString();
+        }
+
+        if (func === 'PROMEDIO') {
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = sum / values.length;
+            return avg.toString();
+        }
+
+        return match; 
+    });
+
+    // 4. Fase de Sustitución de Referencias Simples (Ej: A1 + B2)
     const resolvedFormula = formula.replace(CELL_REFERENCE_REGEX, (match) => {
       const referencedValue = calculateValue(match, [...path, key]);
       
       const numValue = parseFloat(referencedValue);
       
-      if (isNaN(numValue)) {
+      // Si la referencia da un error o no es numérica, la tratamos como 0 en la operación
+      if (isNaN(numValue) || referencedValue.startsWith('#')) {
         return '0'; 
       }
       return numValue.toString();
     });
 
-    // 4. Reemplazar el operador de exponenciación (^) por **
+    // 5. Reemplazar el operador de exponenciación (^) por **
     const finalFormula = resolvedFormula.replace(/\^/g, '**');
 
-    // 5. Evaluar la fórmula (¡Advertencia: usar 'eval' en producción no es seguro!)
+    // 6. Evaluar la fórmula
     try {
       // Intentar una evaluación más segura (aunque sigue siendo eval)
       const result = new Function('return ' + finalFormula)();
@@ -350,7 +465,6 @@ const PacurHoja: React.FC = () => {
 
   return (
     <div className="pacur-hoja-container">
-    {/* CORRECCIÓN: Se eliminó 'jsx global' para corregir el error de TypeScript/Build. */}
     <style>{`
         /* Global Reset and Font */
         :root {
@@ -366,6 +480,7 @@ const PacurHoja: React.FC = () => {
             --excel-header-border: #555;
             --excel-active-cell: #0078d4;
             --excel-active-tab-indicator: #0078d4;
+            --excel-row-select-bg: #2a3a5a; /* Color para celdas de fila seleccionada */
         }
 
         body, html, #root {
@@ -592,6 +707,27 @@ const PacurHoja: React.FC = () => {
             z-index: 20; 
             border: 1px solid var(--excel-header-border);
             border-top: none;
+            cursor: pointer; /* Indica que es seleccionable */
+        }
+        
+        /* Estilo para el encabezado de fila seleccionado */
+        .header-cell.row-selected {
+            background-color: var(--excel-active-cell) !important; 
+            color: white !important;
+            font-weight: bold;
+            border-color: var(--excel-active-cell) !important;
+        }
+
+        /* Estilo para las celdas dentro de una fila seleccionada */
+        .data-cell.row-selected-cell {
+            background-color: var(--excel-row-select-bg) !important; 
+            border-color: #555 !important;
+        }
+        
+        /* Asegura que la celda activa en una fila seleccionada mantenga su contorno */
+        .data-cell.row-selected-cell.active {
+            outline: 2px solid var(--excel-active-cell);
+            background-color: #000 !important; 
         }
 
         .corner-cell {
@@ -753,16 +889,23 @@ const PacurHoja: React.FC = () => {
 
             {Array.from({ length: ROWS }, (_, rIndex) => (
             <div key={rIndex} className="data-row">
-                <div className="cell header-cell">{(rIndex + 1)}</div>
+                {/* Encabezado de fila con funcionalidad de selección */}
+                <div 
+                    className={`cell header-cell ${selectedRows.includes(rIndex + 1) ? 'row-selected' : ''}`}
+                    onClick={() => handleRowClick(rIndex + 1)}
+                >
+                    {(rIndex + 1)}
+                </div>
                 
                 {colHeaders.map(cHeader => {
                 const cellKey = `${cHeader}${rIndex + 1}`;
                 const displayValue = calculateValue(cellKey);
+                const isRowSelected = selectedRows.includes(rIndex + 1);
                 
                 return (
                     <div 
                     key={cellKey}
-                    className={`cell data-cell ${activeCell === cellKey ? 'active' : ''}`}
+                    className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isRowSelected ? 'row-selected-cell' : ''}`}
                     onClick={() => setActiveCell(cellKey)}
                     >
                     {displayValue}
