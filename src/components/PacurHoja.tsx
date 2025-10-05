@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import React from 'react'; 
 
 // --- Configuración de la Cuadrícula para simular un tamaño "Infinito" ---
@@ -27,6 +27,13 @@ interface SheetData {
   [key: string]: string; // Clave: "A1", "B2", Valor: Contenido o fórmula
 }
 
+// Tipo para almacenar el estado completo de la hoja de cálculo (para guardar/cargar)
+interface WorkbookState {
+    data: SheetData;
+    styles: { [key: string]: CellStyle };
+    fileName: string;
+}
+
 // Tipos para el estado y la configuración
 type RibbonTab = 'Archivo' | 'Inicio' | 'Insertar' | 'Dibujar' | 'Disposicion' | 'Formulas' | 'Datos' | 'Revisar' | 'Vista' | 'Automatizar' | 'Ayuda';
 type ContextMenu = {
@@ -36,6 +43,9 @@ type ContextMenu = {
     targetType: 'cell' | 'row' | 'col';
     cellKey: string | null;
 }
+// Tipos para las vistas de Backstage
+type BackstageView = 'Inicio' | 'Abrir' | 'Guardar como' | 'Imprimir' | 'Opciones';
+
 
 // Tipos para el control de bordes
 type BorderOption = 'Ninguno' | 'Todos los bordes' | 'Borde inferior' | 'Borde superior' | 'Borde izquierdo' | 'Borde derecho' | 'Bordes externos' | 'Borde exterior grueso';
@@ -63,6 +73,13 @@ const CELL_REFERENCE_REGEX = /([A-Z]+[0-9]+)/g;
 // Expresión regular para encontrar funciones de rango
 const FUNCTION_REGEX = /(SUMA|PROMEDIO)\(([^)]+)\)/g;
 
+// Estructura de libro de trabajo por defecto
+const INITIAL_STATE: WorkbookState = {
+    data: {},
+    styles: {},
+    fileName: 'Libro1.xlsx',
+}
+
 
 // --- Estilos por defecto ---
 const defaultStyles: CellStyle = {
@@ -80,34 +97,44 @@ const defaultStyles: CellStyle = {
 
 // --- Componente PacurHoja ---
 const PacurHoja: React.FC = () => {
-  const [data, setData] = useState<SheetData>({});
-  // Nuevo estado para los estilos de celda
-  const [cellStyles, setCellStyles] = useState<{ [key: string]: CellStyle }>({});
+  const [data, setData] = useState<SheetData>(INITIAL_STATE.data);
+  const [cellStyles, setCellStyles] = useState<{ [key: string]: CellStyle }>(INITIAL_STATE.styles);
+  const [fileName, setFileName] = useState(INITIAL_STATE.fileName);
+  const [isDirty, setIsDirty] = useState(false); // Indica si hay cambios sin guardar
+
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<RibbonTab>('Inicio');
   const [zoomLevel, setZoomLevel] = useState(100);
   
-  // Se mantienen estos como se usan implícitamente en el componente
   const [selectedRows, _setSelectedRows] = useState<number[]>([]); 
   const [selectedCols, _setSelectedCols] = useState<string[]>([]); 
   
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ 
     visible: false, x: 0, y: 0, targetType: 'cell', cellKey: null 
   });
-  // Nuevo estado para la vista Backstage
-  const [backstageVisible, setBackstageVisible] = useState(false);
   
-  // Estado para los selectores de color
+  // Nuevo estado para la vista Backstage y su sub-navegación
+  const [backstageVisible, setBackstageVisible] = useState(false);
+  const [backstageView, setBackstageView] = useState<BackstageView>('Inicio');
+  
+  // Estados para los selectores de color
   const [selectedFillColor, setSelectedFillColor] = useState<string>('#4d4d4d'); 
   const [selectedTextColor, setSelectedTextColor] = useState<string>('#ffffff'); 
   
   // Estado para el menú desplegable de bordes
   const [borderMenuVisible, setBorderMenuVisible] = useState(false);
   
+  // Estado para la simulación de Imprimir
+  const [printRange, setPrintRange] = useState('1A:5G'); // Rango por defecto para impresión
+  
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
 
-  // ELIMINADA: La declaración de _colHeaderMap que no se utilizaba:
-  // const _colHeaderMap = useMemo(() => { ... }, [colHeaders]);
+  // Efecto para marcar el archivo como modificado al cambiar datos o estilos
+  useEffect(() => {
+    if (data !== INITIAL_STATE.data || cellStyles !== INITIAL_STATE.styles) {
+        setIsDirty(true);
+    }
+  }, [data, cellStyles]);
     
   // --- Lógica de Aplicación de Estilo ---
 
@@ -183,6 +210,7 @@ const PacurHoja: React.FC = () => {
             }
         };
     });
+    setIsDirty(true);
   };
 
   /**
@@ -197,7 +225,6 @@ const PacurHoja: React.FC = () => {
 
   /**
    * Resuelve el valor de una celda (cálculo de fórmulas).
-   * (Esta lógica se mantiene igual que en la versión anterior)
    */
   const calculateValue = (key: string, path: string[] = []): string => {
     const content = data[key] || '';
@@ -233,6 +260,7 @@ const PacurHoja: React.FC = () => {
     const resolvedFormula = formula.replace(CELL_REFERENCE_REGEX, (match) => {
       const referencedValue = calculateValue(match, [...path, key]);
       const numValue = parseFloat(referencedValue);
+      // Solo reemplazamos la referencia si es un número válido o no tiene error.
       if (isNaN(numValue) || referencedValue.startsWith('#')) return '0'; 
       return numValue.toString();
     });
@@ -240,12 +268,14 @@ const PacurHoja: React.FC = () => {
     // 3. Evaluar la fórmula
     try {
       const finalFormula = resolvedFormula.replace(/\^/g, '**');
+      // eslint-disable-next-line no-new-func
       const result = new Function('return ' + finalFormula)();
       
       if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-          // Aplicar formato de número si es necesario
-          let formattedResult = result.toFixed(2).replace(/\.00$/, '');
-          const format = currentCellStyles.numberFormat;
+          // Obtener el formato de número de la celda actual
+          const format = cellStyles[key]?.numberFormat || 'General';
+
+          let formattedResult = result.toString();
 
           switch(format) {
               case 'Moneda':
@@ -287,7 +317,63 @@ const PacurHoja: React.FC = () => {
     }, 3000);
   };
 
-  // --- Manejadores de Interacción ---
+  // --- LÓGICA DE GESTIÓN DE ARCHIVOS ---
+
+  const handleOpen = () => {
+    if (isDirty) {
+        showMessageBox("Tienes cambios sin guardar. Guardando automáticamente 'Libro Anterior'.", false);
+        // Simular que guardamos el estado actual antes de cargarlo
+        localStorage.setItem('temp_workbook_state', JSON.stringify({ data, styles, fileName }));
+    }
+
+    const previousFile = localStorage.getItem('last_saved_workbook');
+    if (previousFile) {
+        const state: WorkbookState = JSON.parse(previousFile);
+        setData(state.data);
+        setCellStyles(state.styles);
+        setFileName(state.fileName);
+        setIsDirty(false);
+        setBackstageVisible(false);
+        setActiveTab('Inicio');
+        showMessageBox(`Archivo "${state.fileName}" cargado correctamente.`);
+    } else {
+        showMessageBox("No se encontró ningún archivo guardado previamente.", true);
+        setBackstageVisible(false);
+        setActiveTab('Inicio');
+    }
+  };
+
+  const handleSave = () => {
+    if (!isDirty) {
+        showMessageBox("No hay cambios para guardar.", false);
+        setBackstageVisible(false);
+        return;
+    }
+    
+    // Simular guardado en localStorage
+    const currentState: WorkbookState = { data, styles: cellStyles, fileName };
+    localStorage.setItem('last_saved_workbook', JSON.stringify(currentState));
+    setIsDirty(false);
+    setBackstageVisible(false);
+    showMessageBox(`Archivo "${fileName}" guardado correctamente.`);
+  };
+
+  const handleSaveAs = (newFileName: string, format: 'xlsx' | 'pacur') => {
+    const fullFileName = `${newFileName}.${format}`;
+    
+    // Simular la descarga del archivo (o persistencia)
+    const currentState: WorkbookState = { data, styles: cellStyles, fileName: fullFileName };
+    
+    // Usamos localStorage para simular el guardado
+    localStorage.setItem('last_saved_workbook', JSON.stringify(currentState));
+    
+    setFileName(fullFileName);
+    setIsDirty(false);
+    setBackstageVisible(false);
+    showMessageBox(`Archivo guardado como "${fullFileName}" en formato ${format.toUpperCase()}.`);
+  }
+  
+  // --- Manejadores de Interacción General ---
 
   // Ocultar el menú contextual y el menú de bordes
   const hideContextMenu = useCallback(() => {
@@ -301,6 +387,7 @@ const PacurHoja: React.FC = () => {
       ...prevData,
       [key]: value
     }));
+    setIsDirty(true);
   };
   
   // Placeholder para acciones de Portapapeles
@@ -346,10 +433,12 @@ const PacurHoja: React.FC = () => {
             setBorderMenuVisible(prev => !prev);
             break;
         case 'Aumentar Decimal':
-            showMessageBox("Aumentar Decimal - (Lógica no implementada)");
-            break;
         case 'Disminuir Decimal':
-            showMessageBox("Disminuir Decimal - (Lógica no implementada)");
+        case 'Formato Condicional':
+        case 'Insertar Celda':
+        case 'Ordenar y Filtrar':
+        case 'Formato de celdas':
+            showMessageBox(`Acción: ${action} - (Lógica no implementada)`);
             break;
         default:
             showMessageBox(`Acción: ${action} - (Lógica no implementada)`);
@@ -473,7 +562,7 @@ const PacurHoja: React.FC = () => {
                     <div className="color-picker-wrapper">
                         <input 
                             type="color" 
-                            value={selectedFillColor} 
+                            value={currentCellStyles.backgroundColor === 'inherit' ? selectedFillColor : currentCellStyles.backgroundColor || selectedFillColor} 
                             onChange={(e) => {
                                 setSelectedFillColor(e.target.value); 
                                 applyStyleToActiveCell('backgroundColor', e.target.value);
@@ -495,7 +584,7 @@ const PacurHoja: React.FC = () => {
                     <div className="color-picker-wrapper">
                          <input 
                             type="color" 
-                            value={selectedTextColor} 
+                            value={currentCellStyles.color === 'var(--excel-text)' ? selectedTextColor : currentCellStyles.color || selectedTextColor} 
                             onChange={(e) => {
                                 setSelectedTextColor(e.target.value); 
                                 applyStyleToActiveCell('color', e.target.value);
@@ -603,54 +692,236 @@ const PacurHoja: React.FC = () => {
         );
     }
   };
+  
+  // --- Componente de la Vista "Guardar como" ---
+  const SaveAsView: React.FC = () => {
+    const [name, setName] = useState(fileName.split('.')[0] || 'Libro Nuevo');
+    const [format, setFormat] = useState<'xlsx' | 'pacur'>('xlsx');
+
+    return (
+        <div className="backstage-content save-as-view">
+            <h2 className="greeting">Guardar como</h2>
+            <div className="save-container">
+                <h3 className="section-title">Guardar en Pacur</h3>
+                <div className="save-form-group">
+                    <label>Nombre del archivo:</label>
+                    <input 
+                        type="text" 
+                        value={name} 
+                        onChange={(e) => setName(e.target.value)} 
+                        className="backstage-input"
+                    />
+                </div>
+                <div className="save-form-group">
+                    <label>Tipo de archivo:</label>
+                    <select 
+                        value={format} 
+                        onChange={(e) => setFormat(e.target.value as 'xlsx' | 'pacur')}
+                        className="backstage-select"
+                    >
+                        <option value="xlsx">Libro de Excel (*.xlsx)</option>
+                        <option value="pacur">Libro de Pacur (*.pacur)</option>
+                    </select>
+                </div>
+                <button 
+                    className="backstage-save-button"
+                    onClick={() => name ? handleSaveAs(name, format) : showMessageBox("El nombre del archivo no puede estar vacío.", true)}
+                >
+                    Guardar
+                </button>
+                
+                <h3 className="section-title" style={{marginTop: '30px'}}>Otras ubicaciones</h3>
+                <p style={{color: '#aaa'}}>Compartidos, OneDrive, Este PC...</p>
+            </div>
+        </div>
+    );
+  };
+  
+  // --- Componente de la Vista "Imprimir" ---
+  const PrintView: React.FC = () => {
+      const handlePrint = () => {
+          // Lógica simple para validar el rango: A1:B10
+          const rangePattern = /^[A-Z]+[0-9]+:[A-Z]+[0-9]+$/i;
+          if (printRange.trim() === 'Hoja actual') {
+              showMessageBox("Imprimiendo la hoja actual completa... (Simulación)");
+          } else if (rangePattern.test(printRange.trim())) {
+              showMessageBox(`Imprimiendo el rango: ${printRange.trim()} (Simulación)`);
+          } else {
+              showMessageBox("Rango de impresión inválido. Usa el formato CELDA_INICIO:CELDA_FIN (ej: 1A:5G)", true);
+              return;
+          }
+          setBackstageVisible(false);
+          setActiveTab('Inicio');
+      }
+      
+      return (
+          <div className="backstage-print-overlay">
+              <div className="backstage-print-content">
+                  {/* Barra Superior de la vista de impresión */}
+                  <div className="print-header">
+                      <span>Configuración de impresión</span>
+                      <span className="page-info">Total: 1 página</span>
+                      <div className="print-actions">
+                          <button onClick={() => setBackstageVisible(false)} className="print-cancel-button">CANCELAR</button>
+                          <button onClick={handlePrint} className="print-submit-button">IMPRIMIR</button>
+                      </div>
+                  </div>
+                  
+                  {/* Área principal: Vista previa y Opciones */}
+                  <div className="print-main-area">
+                      {/* Vista previa (Simulada) */}
+                      <div className="print-preview-pane">
+                          <div className="print-paper">
+                              <span style={{textAlign: 'center', color: '#999'}}>Vista Previa del Rango: {printRange}</span>
+                          </div>
+                      </div>
+                      
+                      {/* Opciones de Impresión */}
+                      <div className="print-options-pane">
+                          <div className="print-option-group">
+                              <label>Qué imprimir</label>
+                              <input 
+                                  type="text" 
+                                  value={printRange}
+                                  onChange={(e) => setPrintRange(e.target.value)}
+                                  placeholder="Ej: Hoja actual, 1A:5G"
+                                  className="print-input"
+                              />
+                          </div>
+                          <div className="print-option-group">
+                              <label>Orientación de la página</label>
+                              <div className="radio-group">
+                                  <label><input type="radio" name="orientation" defaultChecked/> Horizontal</label>
+                                  <label><input type="radio" name="orientation"/> Vertical</label>
+                              </div>
+                          </div>
+                          
+                          <div className="print-option-group">
+                              <label>Tamaño del papel</label>
+                              <select className="print-select">
+                                  <option>A4 (21 cm x 29.7 cm)</option>
+                                  <option>Carta</option>
+                              </select>
+                          </div>
+                          
+                           <div className="print-option-group">
+                              <label>Márgenes</label>
+                              <select className="print-select">
+                                  <option>Normales</option>
+                                  <option>Estrechos</option>
+                              </select>
+                          </div>
+                          
+                           <button className="print-link">ESTABLECER SALTOS DE PÁGINA PERSON.</button>
+
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   // --- Renderizado del Backstage (Menú Archivo) ---
   const renderBackstage = () => {
     if (!backstageVisible) return null;
+
+    if (backstageView === 'Imprimir') {
+        return <PrintView />;
+    }
+
+    const navItems: { name: string, view: BackstageView, action?: () => void }[] = [
+        { name: 'Nuevo', view: 'Inicio' },
+        { name: 'Abrir', view: 'Abrir', action: handleOpen },
+        { name: 'Guardar', view: 'Inicio', action: handleSave }, // Guarda y vuelve a Inicio
+        { name: 'Guardar como', view: 'Guardar como' },
+        { name: 'Imprimir', view: 'Imprimir' },
+        { name: 'Exportar', view: 'Opciones' },
+        { name: 'Cerrar', view: 'Opciones' },
+        { name: 'Cuenta', view: 'Opciones' },
+        { name: 'Opciones', view: 'Opciones' },
+    ];
+    
+    // Contenido de la vista Backstage principal (Inicio, Abrir, Opciones)
+    const MainBackstageContent = () => {
+        if (backstageView === 'Guardar como') {
+            return <SaveAsView />;
+        }
+        
+        return (
+            <div className="backstage-content">
+                <h2 className="greeting">
+                    {backstageView === 'Inicio' ? 'Buenas tardes' : backstageView}
+                    {isDirty && <span className="dirty-indicator"> • Cambios sin guardar</span>}
+                </h2>
+                
+                {/* Contenido de la vista Abrir */}
+                {backstageView === 'Abrir' && (
+                    <>
+                        <h3 className="section-title">Archivos Recientes</h3>
+                        <p style={{color: '#aaa'}}>Haz clic en **Abrir** a la izquierda para cargar el último archivo guardado.</p>
+                        <div className="recent-list">
+                            <p className="recent-file" onClick={handleOpen}>Libro Anterior.xlsx - (Hacer clic para Cargar)</p>
+                            <p>Reporte Mensual.xlsx - Ayer</p>
+                        </div>
+                    </>
+                )}
+                
+                {/* Contenido de la vista Inicio (Nuevo) */}
+                {backstageView === 'Inicio' && (
+                    <>
+                        <h3 className="section-title">Nuevo</h3>
+                        <div className="template-grid">
+                            <div className="template-card" onClick={() => { setData(INITIAL_STATE.data); setCellStyles(INITIAL_STATE.styles); setFileName(INITIAL_STATE.fileName); setIsDirty(false); setBackstageVisible(false); }}>
+                                <div className="template-icon">📄</div>
+                                Libro en blanco
+                            </div>
+                            <div className="template-card">
+                                <div className="template-icon">💡</div>
+                                Realizar un recorrido
+                            </div>
+                            <div className="template-card">
+                                <div className="template-icon">∑</div>
+                                Tutorial de fórmula
+                            </div>
+                            <div className="template-card">
+                                <div className="template-icon">📊</div>
+                                Tabla dinámica
+                            </div>
+                        </div>
+                        <h3 className="section-title">Recientes</h3>
+                        <div className="recent-list">
+                            <p>Documento1.xlsx - Hoy</p>
+                            <p>Reporte Mensual.xlsx - Ayer</p>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    }
+
 
     // Cuando el backstage está visible, forzamos que la pestaña "Archivo" esté activa
     // y oscurecemos el contenido principal
     return (
         <div className="backstage-overlay">
             <div className="backstage-menu">
-                {['Nuevo', 'Abrir', 'Guardar', 'Guardar como', 'Imprimir', 'Exportar', 'Cerrar', 'Cuenta', 'Opciones'].map(item => (
+                {navItems.map(item => (
                     <div 
-                        key={item} 
-                        className={`backstage-item ${item === 'Nuevo' ? 'active-item' : ''}`}
-                        onClick={() => showMessageBox(`Hiciste clic en "${item}"`)}
+                        key={item.name} 
+                        className={`backstage-item ${backstageView === item.view && item.name !== 'Guardar' ? 'active-item' : ''}`}
+                        onClick={() => {
+                            if (item.action) {
+                                item.action();
+                            } else {
+                                setBackstageView(item.view);
+                            }
+                        }}
                     >
-                        {item}
+                        {item.name}
                     </div>
                 ))}
             </div>
-            <div className="backstage-content">
-                <h2 className="greeting">Buenas tardes</h2>
-                <h3 className="section-title">Nuevo</h3>
-                <div className="template-grid">
-                    {/* Secciones de plantillas simuladas de la imagen */}
-                    <div className="template-card" onClick={() => setBackstageVisible(false)}>
-                        <div className="template-icon">📄</div>
-                        Libro en blanco
-                    </div>
-                    <div className="template-card">
-                        <div className="template-icon">💡</div>
-                        Realizar un recorrido
-                    </div>
-                    <div className="template-card">
-                        <div className="template-icon">∑</div>
-                        Tutorial de fórmula
-                    </div>
-                    <div className="template-card">
-                        <div className="template-icon">📊</div>
-                        Tabla dinámica
-                    </div>
-                </div>
-                <h3 className="section-title">Recientes</h3>
-                <div className="recent-list">
-                    <p>Documento1.xlsx - Hoy</p>
-                    <p>Reporte Mensual.xlsx - Ayer</p>
-                </div>
-            </div>
+            {MainBackstageContent()}
         </div>
     );
   };
@@ -701,6 +972,13 @@ const PacurHoja: React.FC = () => {
             background-color: var(--excel-dark-bg);
             position: relative; /* Necesario para el overlay del backstage */
         }
+        
+        .workbook-title {
+            margin-left: 20px;
+            font-weight: 300;
+            font-size: 0.9rem;
+            color: #ddd;
+        }
 
         /* 1. RIBBON (Barra de Herramientas Superior) */
         .ribbon {
@@ -736,6 +1014,7 @@ const PacurHoja: React.FC = () => {
             font-weight: bold;
             border-radius: 4px;
             padding: 8px 20px;
+            margin-right: 15px; /* Más espacio después de Archivo */
         }
         
         .ribbon-tab.active {
@@ -997,6 +1276,8 @@ const PacurHoja: React.FC = () => {
             /* Mantiene los bordes de la cuadrícula si no hay estilo de borde definido */
             border-right: 1px solid var(--excel-grid-line) !important;
             border-bottom: 1px solid var(--excel-grid-line) !important;
+            border-top: none !important;
+            border-left: none !important;
         }
         .border-all {
             border: var(--excel-border-thin) !important;
@@ -1059,7 +1340,6 @@ const PacurHoja: React.FC = () => {
         }
 
         /* 4. MENÚ CONTEXTUAL */
-        /* ... Estilos de menú contextual se mantienen ... */
         .context-menu {
             position: fixed;
             background-color: var(--excel-context-bg);
@@ -1094,7 +1374,6 @@ const PacurHoja: React.FC = () => {
 
 
         /* 5. BARRA DE ESTADO (Parte Inferior) */
-        /* ... Estilos de barra de estado se mantienen ... */
         .status-bar {
             background-color: var(--excel-header-bg);
             border-top: 1px solid var(--excel-grid-line);
@@ -1126,6 +1405,7 @@ const PacurHoja: React.FC = () => {
             display: flex;
             flex-direction: column;
             border-right: 1px solid var(--excel-grid-line);
+            flex-shrink: 0;
         }
 
         .backstage-item {
@@ -1162,6 +1442,14 @@ const PacurHoja: React.FC = () => {
             margin-bottom: 30px;
             border-bottom: 1px solid #444;
             padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .dirty-indicator {
+            font-size: 0.8rem;
+            color: #e53e3e;
+            margin-left: 10px;
         }
 
         .section-title {
@@ -1214,6 +1502,181 @@ const PacurHoja: React.FC = () => {
         .recent-list p:hover {
             color: var(--excel-active-tab);
         }
+        
+        /* Estilos de Guardar como */
+        .save-container {
+            max-width: 400px;
+        }
+        
+        .save-form-group {
+            margin-bottom: 15px;
+        }
+        
+        .save-form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+        
+        .backstage-input, .backstage-select {
+            width: 100%;
+            padding: 8px 10px;
+            background-color: var(--excel-mid-bg);
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: var(--excel-text);
+            font-size: 1rem;
+        }
+        
+        .backstage-save-button {
+            background-color: #107c41;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.1s;
+        }
+        .backstage-save-button:hover {
+            background-color: #0c5e31;
+        }
+
+        /* Estilos de Imprimir (PrintView) - Basado en la imagen */
+        .backstage-print-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            background-color: #ccc; /* Fondo gris claro */
+            z-index: 500;
+        }
+        
+        .backstage-print-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .print-header {
+            background-color: white;
+            color: black;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1rem;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        
+        .page-info {
+            font-size: 0.9rem;
+            font-weight: 300;
+            margin-left: 20px;
+            color: #666;
+        }
+        
+        .print-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .print-cancel-button {
+            background-color: transparent;
+            color: #333;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+        }
+        
+        .print-submit-button {
+            background-color: var(--excel-active-tab);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 15px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .print-main-area {
+            flex-grow: 1;
+            display: flex;
+        }
+        
+        .print-preview-pane {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .print-paper {
+            width: 700px; 
+            height: 1000px;
+            max-width: 90%;
+            max-height: 90%;
+            background-color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            border: 1px solid #aaa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .print-options-pane {
+            width: 300px;
+            min-width: 250px;
+            background-color: #f0f0f0; /* Panel de opciones más claro */
+            color: #333;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 1px solid #aaa;
+            flex-shrink: 0;
+        }
+        
+        .print-option-group {
+            margin-bottom: 20px;
+        }
+        
+        .print-option-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .print-input, .print-select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: white;
+            color: #333;
+            font-size: 0.9rem;
+        }
+        
+        .radio-group label {
+            font-weight: normal;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .print-link {
+            color: var(--excel-active-tab);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            font-size: 0.8rem;
+            margin-top: 10px;
+            text-decoration: underline;
+        }
 
     `}</style>
       
@@ -1229,6 +1692,7 @@ const PacurHoja: React.FC = () => {
                     className={`ribbon-tab ${tab === 'Archivo' ? 'file-tab' : ''} ${activeTab === tab ? 'active' : ''}`}
                     onClick={() => {
                         if (tab === 'Archivo') {
+                            setBackstageView('Inicio'); // Siempre ir a Inicio al entrar en Archivo
                             setBackstageVisible(true);
                         } else {
                             setBackstageVisible(false);
@@ -1240,6 +1704,9 @@ const PacurHoja: React.FC = () => {
                 </span>
             ))}
             
+            {/* Título y Acciones de la derecha */}
+            <span className="workbook-title">{fileName} {isDirty ? '(Modificado)' : ''}</span>
+
             <div style={{marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center'}}>
                 <button onClick={() => showMessageBox("Comentarios - (Lógica no implementada)")} title="Comentarios">💬 Comentarios</button>
                 <button onClick={() => showMessageBox("Compartir - (Lógica no implementada)")} title="Compartir" style={{backgroundColor: '#107c41'}}>➡️ Compartir</button>
@@ -1308,14 +1775,18 @@ const PacurHoja: React.FC = () => {
                         
                         {colHeaders.map(cHeader => {
                             const cellKey = `${cHeader}${rowIndex}`;
+                            // Usar 'key' para obtener el formato correcto en calculateValue
                             const displayValue = calculateValue(cellKey);
                             const isSelected = isRowSelected || selectedCols.includes(cHeader);
                             const styles = { ...defaultStyles, ...(cellStyles[cellKey] || {}) };
                             
+                            // Determinar la clase de borde para aplicar los estilos visuales
+                            const borderClass = `border-${styles.borderStyle || 'none'}`;
+                            
                             return (
                                 <div 
                                     key={cellKey}
-                                    className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''} border-${styles.borderStyle || 'none'}`}
+                                    className={`cell data-cell ${activeCell === cellKey ? 'active' : ''} ${isSelected ? 'selected-cell' : ''} ${borderClass}`}
                                     onClick={() => setActiveCell(cellKey)}
                                     onContextMenu={(_) => {/* Lógica de menú contextual */}}
                                     style={{
@@ -1323,12 +1794,10 @@ const PacurHoja: React.FC = () => {
                                         fontStyle: styles.fontStyle,
                                         textDecoration: styles.textDecoration,
                                         textAlign: styles.textAlign,
-                                        backgroundColor: styles.backgroundColor,
-                                        color: styles.color,
+                                        backgroundColor: styles.backgroundColor === 'inherit' ? 'var(--excel-dark-bg)' : styles.backgroundColor,
+                                        color: styles.color === 'var(--excel-text)' ? 'var(--excel-text)' : styles.color,
                                         fontSize: styles.fontSize,
                                         fontFamily: styles.fontFamily,
-                                        // Las reglas de borde se manejan mejor con clases CSS para simular la complejidad
-                                        // Sin embargo, si `borderStyle` es 'none', nos aseguramos de que no anule el estilo de cuadrícula.
                                     }}
                                 >
                                     {displayValue}
@@ -1378,14 +1847,60 @@ const PacurHoja: React.FC = () => {
   );
 };
 
-// Se elimina la función auxiliar _cellToCoords
-// Se elimina la función auxiliar _coordsToCell
+// Función auxiliar para parsear rangos (simplificado)
+const parseRange = (range: string): string[] => {
+    const parts = range.split(':');
+    if (parts.length !== 2) return [];
 
-const parseRange = (range: string) => {
-    // Para simplificar, esta función necesita acceso a colHeaderMap y colHeaders
-    // En una implementación real se pasarían como argumentos. Aquí se mantiene como un stub para que compile.
-    // Asumimos que calculateValue aún puede resolver esto internamente.
-    return range.split(':').map(c => c.trim()).filter(c => c.length > 0);
+    const [start, end] = parts;
+
+    // Función rudimentaria para obtener coordenadas (Columna, Fila) de una clave de celda (ej: A1)
+    const cellToCoords = (cellKey: string): [number, number] | null => {
+        const match = cellKey.match(/^([A-Z]+)([0-9]+)$/i);
+        if (!match) return null;
+
+        const colStr = match[1].toUpperCase();
+        const rowNum = parseInt(match[2], 10);
+
+        let colIndex = 0;
+        for (let i = 0; i < colStr.length; i++) {
+            colIndex = colIndex * 26 + (colStr.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+        }
+        return [colIndex, rowNum];
+    };
+    
+    // Función rudimentaria para obtener clave de celda de coordenadas
+    const coordsToCell = (colIndex: number, rowIndex: number): string => {
+        let colStr = '';
+        let num = colIndex;
+        while (num > 0) {
+            let remainder = (num - 1) % 26;
+            colStr = String.fromCharCode('A'.charCodeAt(0) + remainder) + colStr;
+            num = Math.floor((num - 1) / 26);
+        }
+        return `${colStr}${rowIndex}`;
+    };
+
+    const startCoords = cellToCoords(start);
+    const endCoords = cellToCoords(end);
+
+    if (!startCoords || !endCoords) return [];
+
+    const [startCol, startRow] = startCoords;
+    const [endCol, endRow] = endCoords;
+    
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+
+    const keys: string[] = [];
+    for (let r = minRow; r <= maxRow; r++) {
+        for (let c = minCol; c <= maxCol; c++) {
+            keys.push(coordsToCell(c, r));
+        }
+    }
+    return keys;
 };
 
 export default PacurHoja;
