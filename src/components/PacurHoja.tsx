@@ -272,7 +272,7 @@ const PrintView: React.FC<{
     return (
         <div className="absolute inset-0 bg-gray-900 dark:bg-[#1e1e1e] p-10 z-50 overflow-auto text-white flex">
             {/* Panel de Configuración de Impresión (Izquierda) */}
-            <div className="w-1/4 bg-gray-800 dark:bg-gray-700 p-6 space-y-6 flex flex-col justify-between">
+            <div className="w-1/4 bg-gray-800 dark:bg-gray-700 p-6 space-y-6 flex flex-col justify-between rounded-lg">
                 <div>
                     <h2 className="text-2xl font-semibold mb-4 border-b border-gray-600 pb-2">Imprimir</h2>
                     <div className="space-y-4">
@@ -934,8 +934,8 @@ const PacurHoja: React.FC = () => {
                                 if (option === 'Guardar como') return setSaveAsVisible(true);
                                 if (option === 'Imprimir') return setPrintVisible(true);
                                 if (option === 'Nuevo') {
-                                    // Usar window.confirm para una simulación simple de confirmación
-                                    if (docState.isDirty && !window.confirm('Hay cambios sin guardar. ¿Desea crear un nuevo libro?')) return;
+                                    // Usar console.log en lugar de window.confirm()
+                                    console.log('[ALERTA] Simulando confirmación de nuevo libro...');
                                     setSheetData({});
                                     setDocState({ fileName: 'Libro Nuevo', isDirty: false, data: {}, activeSheet: 'Hoja1' });
                                     setActiveCell(null);
@@ -992,10 +992,10 @@ const PacurHoja: React.FC = () => {
 
         const tabContents: Record<string, JSX.Element> = {
             'Inicio': (
-                <>
+                <div className="flex space-x-4">
                     {/* Grupo Portapapeles */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[100px]">
-                        {renderButton('Pegar', 'paste', () => console.log('[ALERTA] Simulando Pegar...'), false, 'h-8')}
+                    <div className="flex flex-col border-r border-gray-700 pr-3 items-center min-w-[100px] py-1">
+                        {renderButton('Pegar', 'paste', () => console.log('[ALERTA] Simulando Pegar...'), false, 'h-8 w-1/2')}
                         <div className="flex mt-1 space-x-1">
                             {renderButton('Cortar', 'cut', () => console.log('[ALERTA] Simulando Cortar...'))}
                             {renderButton('Copiar', 'copy', () => console.log('[ALERTA] Simulando Copiar...'))}
@@ -1004,11 +1004,11 @@ const PacurHoja: React.FC = () => {
                     </div>
 
                     {/* Grupo Fuente */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[220px]">
-                        <div className="flex space-x-1 mb-1">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 items-center min-w-[280px] py-1">
+                        <div className="flex space-x-2 mb-1 items-center">
                              {/* Selector de Fuente */}
                             <select
-                                className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm"
+                                className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm w-36 cursor-pointer"
                                 value={currentStyles.fontFamily || 'Inter'}
                                 onChange={(e) => applyStyleToActiveCell('fontFamily', e.target.value)}
                                 disabled={!activeCell}
@@ -1017,7 +1017,7 @@ const PacurHoja: React.FC = () => {
                             </select>
                              {/* Selector de Tamaño */}
                             <select
-                                className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm w-16"
+                                className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm w-16 cursor-pointer"
                                 value={currentStyles.fontSize || 14}
                                 onChange={(e) => applyStyleToActiveCell('fontSize', parseInt(e.target.value))}
                                 disabled={!activeCell}
@@ -1066,7 +1066,7 @@ const PacurHoja: React.FC = () => {
                     </div>
 
                     {/* Grupo Alineación */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[150px]">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 items-center min-w-[150px] py-1">
                         <div className="flex space-x-1">
                              {/* Botones de Alineación Horizontal */}
                             {renderButton('Alinear a la izquierda', 'align-left', () => applyStyleToActiveCell('textAlign', 'left'), currentStyles.textAlign === 'left')}
@@ -1081,7 +1081,7 @@ const PacurHoja: React.FC = () => {
                     </div>
 
                     {/* Grupo Número */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[180px]">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 items-center min-w-[180px] py-1">
                          <div className="flex space-x-1">
                             <DropdownControl
                                 label="Formato de Número"
@@ -1101,15 +1101,15 @@ const PacurHoja: React.FC = () => {
                     </div>
 
                     {/* Grupo Edición */}
-                    <div className="flex flex-col items-center min-w-[100px]">
-                        {renderButton('Autosuma', 'calculator', () => console.log('[ALERTA] Simulando Autosuma...'))}
+                    <div className="flex flex-col items-center min-w-[100px] py-1">
+                        {renderButton('Autosuma', 'calculator', () => console.log('[ALERTA] Simulando Autosuma...'), false, 'h-8')}
                         <div className="flex mt-1 space-x-1">
                             {renderButton('Ordenar y filtrar', 'sort', () => console.log('[ALERTA] Simulando Ordenar...'))}
                             {renderButton('Buscar', 'search', () => console.log('[ALERTA] Simulando Buscar...'))}
                         </div>
                         <span className="text-xs text-gray-400 mt-1">Edición</span>
                     </div>
-                </>
+                </div>
             ),
             'Insertar': <div className="p-2 text-gray-400">Opciones de Insertar... (Gráficos, Tablas, Imágenes)</div>,
             'Fórmulas': <div className="p-2 text-gray-400">Opciones de Fórmulas... (Autosuma, Lógicas, Financieras)</div>,
@@ -1218,7 +1218,7 @@ const PacurHoja: React.FC = () => {
 
                         {/* Celdas de Datos */}
                         <div className="flex flex-col">
-                            {Array.from({ length: DEFAULT_ROWS }).map((_, row) => (
+                            {Array.from({ length: DEFAULT_COLS }).map((_, col) => (
                                 <div key={row} className="flex">
                                     {Array.from({ length: DEFAULT_COLS }).map((_, col) => (
                                         <Cell
