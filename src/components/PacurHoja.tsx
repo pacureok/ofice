@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
+// Carga de iconos de Font Awesome para el Ribbon
+// Necesitarás agregar esta línea a tu HTML principal si no usas una herramienta de empaquetado:
+// <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJ8yKzS0Qj1VlPstn3t0x12oN/cE2O/C/0P1uD2A" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
 // --- TIPOS Y CONSTANTES ---
 
 // Define las propiedades de estilo que puede tener una celda
@@ -8,14 +12,14 @@ type CellStyle = {
     fontSize?: number;
     fontWeight?: 'normal' | 'bold';
     fontStyle?: 'normal' | 'italic';
-    textDecoration?: 'none' | 'underline';
+    textDecoration?: 'none' | 'underline' | 'line-through';
     textAlign?: 'left' | 'center' | 'right';
     backgroundColor?: string;
     color?: string;
     borderStyle?: 'none' | 'all' | 'bottom' | 'top' | 'left' | 'right' | 'outside' | 'thickOutside';
     numberFormat?: 'General' | 'Currency' | 'Percentage' | 'Thousands';
     // Estilos de la tabla de ejemplo
-    padding?: string; 
+    padding?: string;
     borderRadius?: string;
     border?: string;
 };
@@ -46,7 +50,7 @@ interface PrintSettings {
 }
 
 const DEFAULT_ROWS = 20;
-const DEFAULT_COLS = 10;
+const DEFAULT_COLS = 15;
 const COL_HEADERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 // --- UTILIDADES ---
@@ -68,6 +72,28 @@ const coordsToCell = (row: number, col: number): string => {
 };
 
 /**
+ * Convierte notación de celda (A1, B5) a coordenadas (row, col)
+ * @param cellId Notación de celda (string)
+ * @returns Coordenadas [row, col] (base 0) o [null, null] si es inválido
+ */
+const cellToCoords = (cellId: string): [number | null, number | null] => {
+    const match = cellId.match(/([A-Z]+)(\d+)/i);
+    if (!match) return [null, null];
+
+    const colStr = match[1].toUpperCase();
+    const row = parseInt(match[2], 10) - 1;
+
+    let colIndex = 0;
+    for (let i = 0; i < colStr.length; i++) {
+        colIndex = colIndex * 26 + (colStr.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+    }
+    colIndex -= 1;
+
+    return [row, colIndex];
+};
+
+
+/**
  * Parsea un rango de celda (ej: A1:B5) y devuelve una lista de claves de celda.
  * @param rangeString Rango de celda (ej: A1:B5)
  * @returns Array de claves de celda (ej: ['A1', 'A2', ...])
@@ -76,24 +102,10 @@ const parseRange = (rangeString: string): string[] => {
     if (!rangeString || !rangeString.includes(':')) return [];
 
     const [startCell, endCell] = rangeString.split(':');
-    const startMatch = startCell.match(/([A-Z]+)(\d+)/);
-    const endMatch = endCell.match(/([A-Z]+)(\d+)/);
+    const [startRow, startCol] = cellToCoords(startCell);
+    const [endRow, endCol] = cellToCoords(endCell);
 
-    if (!startMatch || !endMatch) return [];
-
-    // Conversión de letras de columna a índice (simplificado para A-J)
-    const colToIndex = (col: string): number => {
-        let index = 0;
-        for (let i = 0; i < col.length; i++) {
-            index = index * 26 + (col.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-        }
-        return index - 1;
-    };
-
-    const startCol = colToIndex(startMatch[1]);
-    const startRow = parseInt(startMatch[2], 10) - 1;
-    const endCol = colToIndex(endMatch[2]);
-    const endRow = parseInt(endMatch[2], 10) - 1;
+    if (startRow === null || startCol === null || endRow === null || endCol === null) return [];
 
     const cells: string[] = [];
 
@@ -131,9 +143,15 @@ const calculateValue = (expression: string, sheetData: SheetData): string | numb
         const values = cells.map(cellId => {
             const cell = sheetData[cellId];
             if (cell) {
-                // Recursivamente calcular el valor de la celda referenciada
-                const val = calculateValue(cell.formula || cell.value, sheetData);
-                return typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, ""));
+                // Si la celda tiene un valor calculado, úsalo directamente.
+                // Si no, intenta parsear el valor.
+                const val = cell.calculatedValue !== undefined
+                    ? cell.calculatedValue
+                    : cell.value;
+
+                // Intentar convertir el valor a número
+                const numVal = parseFloat(String(val).replace(/[^0-9.-]+/g, ""));
+                return isNaN(numVal) ? 0 : numVal;
             }
             return 0;
         }).filter(val => !isNaN(val));
@@ -154,8 +172,13 @@ const calculateValue = (expression: string, sheetData: SheetData): string | numb
     evaluatedExpression = evaluatedExpression.replace(/[A-Z]+[0-9]+/g, (match) => {
         const cell = sheetData[match];
         if (cell) {
-            const val = calculateValue(cell.formula || cell.value, sheetData);
-            return String(val).replace(/[^0-9.-]+/g, ""); // Usar solo el número
+            // Obtener el valor ya calculado o el valor sin fórmula
+            const val = cell.calculatedValue !== undefined
+                ? cell.calculatedValue
+                : cell.value;
+
+            // Usar solo el número para la evaluación
+            return String(val).replace(/[^0-9.-]+/g, "");
         }
         return '0';
     });
@@ -177,13 +200,11 @@ const SaveAsView: React.FC<{
     handleSaveAs: (fileName: string, format: string) => void;
     onClose: () => void;
 }> = ({ docState, handleSaveAs, onClose }) => {
-    // Hooks locales para esta vista, llamados incondicionalmente
     const [newFileName, setNewFileName] = useState(docState.fileName);
     const [format, setFormat] = useState('excel');
 
     const onSave = () => {
         handleSaveAs(newFileName, format);
-        onClose(); // Cerrar la vista de Guardar como y el Backstage
     }
 
     return (
@@ -234,13 +255,14 @@ const PrintView: React.FC<{
 }> = ({ printSettings, setPrintSettings, onClose }) => {
 
     const isValidRange = (range: string) => {
-        return range === 'Hoja actual' || /^[A-Z]+\d+:[A-Z]+\d+$/i.test(range);
+        return range === 'Hoja actual' || range === 'Selección' || /^[A-Z]+\d+:[A-Z]+\d+$/i.test(range);
     }
 
     const handlePrint = () => {
         if(isValidRange(printSettings.range)) {
             // Usar console.log en lugar de alert()
             console.log(`[ALERTA] Simulando imprimir rango: ${printSettings.range} en orientación ${printSettings.orientation}.`);
+            onClose(); // Cerrar después de simular la impresión
         } else {
             // Usar console.log en lugar de alert()
             console.log('[ALERTA] Rango de impresión inválido.');
@@ -302,7 +324,7 @@ const PrintView: React.FC<{
                     </button>
                     <button
                         className="w-full mt-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md"
-                        onClick={onClose}
+                        onClick={() => { onClose(); setPrintSettings({ range: 'Hoja actual', orientation: 'vertical' }); }} // Reset settings on close
                     >
                         Cerrar Vista Previa
                     </button>
@@ -317,6 +339,221 @@ const PrintView: React.FC<{
          </div>
     );
 };
+
+
+// --- COMPONENTES AUXILIARES DEL RIBBON (Extraídos para evitar violación de Hooks) ---
+
+interface DropdownProps {
+    label: string;
+    items: { label: string, action: () => void }[];
+    primaryIconName: string;
+}
+
+/**
+ * Control de menú desplegable para el Ribbon.
+ * Usa Hooks (useState, useRef, useEffect) por lo que DEBE estar fuera del componente principal.
+ */
+const DropdownControl: React.FC<DropdownProps> = ({ label, items, primaryIconName }) => {
+     const [isOpen, setIsOpen] = useState(false);
+     const dropdownRef = useRef<HTMLDivElement>(null);
+
+     useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+     }, []);
+
+     return (
+         <div className="relative inline-block" ref={dropdownRef}>
+             <button
+                 title={label}
+                 className="p-2 rounded-md hover:bg-gray-600 text-gray-200 flex items-center"
+                 onClick={() => setIsOpen(!isOpen)}
+             >
+                 <i className={`fas fa-${primaryIconName}`}></i>
+                 <i className="fas fa-caret-down ml-1 text-xs"></i>
+             </button>
+             {isOpen && (
+                 <div className="absolute top-full left-0 mt-1 w-48 bg-gray-700 border border-gray-600 rounded-md shadow-lg z-50">
+                     {items.map(item => (
+                         <div
+                             key={item.label}
+                             className="px-3 py-2 text-sm text-gray-100 hover:bg-indigo-600 cursor-pointer"
+                             onClick={() => { item.action(); setIsOpen(false); }}
+                         >
+                             {item.label}
+                         </div>
+                     ))}
+                 </div>
+             )}
+         </div>
+     );
+};
+
+interface ColorPickerProps {
+    label: string;
+    styleKey: 'backgroundColor' | 'color';
+    defaultColor: string;
+    activeCell: string | null;
+    currentStyles: CellStyle;
+    applyStyleToActiveCell: (styleKey: keyof CellStyle, value: any) => void;
+}
+
+/**
+ * Control para seleccionar color de fuente o relleno.
+ * Usa Hooks (useRef) por lo que DEBE estar fuera del componente principal.
+ */
+const ColorPickerControl: React.FC<ColorPickerProps> = ({
+    label, styleKey, defaultColor, activeCell, currentStyles, applyStyleToActiveCell
+}) => {
+    const colorRef = useRef<HTMLInputElement>(null);
+    const initialColor = currentStyles[styleKey] || defaultColor;
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newColor = e.target.value;
+        if(activeCell) {
+            applyStyleToActiveCell(styleKey, newColor);
+        }
+    };
+
+    const isFontColor = styleKey === 'color';
+
+    return (
+        <div className="relative inline-block" title={label}>
+            <button
+                className="p-2 rounded-md hover:bg-gray-600 text-gray-200 text-lg"
+                onClick={() => colorRef.current?.click()}
+                disabled={!activeCell}
+            >
+                 {/* Icono con una barra que muestra el color actual */}
+                <div className="relative">
+                    {/* Usar fa-a para color de fuente, fa-fill-drip para color de relleno */}
+                    <i className={`fas ${isFontColor ? 'fa-a' : 'fa-fill-drip'}`}></i>
+                    <div
+                        className="absolute -bottom-1 left-0 right-0 h-[3px] rounded-full"
+                        style={{ backgroundColor: initialColor, border: '1px solid #333' }}
+                    ></div>
+                </div>
+            </button>
+            <input
+                type="color"
+                ref={colorRef}
+                value={initialColor}
+                onChange={handleChange}
+                className="absolute opacity-0 pointer-events-none w-0 h-0"
+            />
+        </div>
+    );
+};
+
+
+// --- COMPONENTE DE CELDA (MOVIDO FUERA DEL COMPONENTE PRINCIPAL) ---
+
+interface CellProps {
+    row: number;
+    col: number;
+    sheetData: SheetData;
+    activeCell: string | null;
+    selectedRows: Set<number>;
+    selectedCols: Set<number>;
+    cellInput: string;
+    updateCellValue: () => void;
+    handleCellClick: (cellId: string) => void;
+    handleContextMenu: (e: React.MouseEvent, target: 'cell' | 'row' | 'col', cellId?: string) => void;
+    setCellInput: React.Dispatch<React.SetStateAction<string>>;
+    handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+    inputRef: React.RefObject<HTMLInputElement>;
+}
+
+const Cell: React.FC<CellProps> = React.memo(({
+    row, col, sheetData, activeCell, selectedRows, selectedCols, cellInput,
+    updateCellValue, handleCellClick, handleContextMenu, setCellInput, handleKeyDown, inputRef
+}) => {
+    const cellId = coordsToCell(row, col);
+    const data = sheetData[cellId];
+    const isActive = activeCell === cellId;
+    const isSelectedRow = selectedRows.has(row);
+    const isSelectedCol = selectedCols.has(col);
+    const isSelected = isSelectedRow || isSelectedCol;
+
+    // Determinar valor a mostrar
+    const displayedValue = data?.calculatedValue !== undefined ? String(data.calculatedValue) : data?.value || '';
+
+    // Aplicar formato de número
+    const formatValue = (value: string | number, format: CellStyle['numberFormat']) => {
+        let num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g, "")) : value;
+        if (isNaN(num)) return value;
+
+        if (format === 'Currency') {
+            return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+        }
+        if (format === 'Percentage') {
+            // Si el valor ya es decimal (ej. 0.5), lo multiplicamos por 100
+            const numPercent = num < 1 && num > -1 ? num * 100 : num;
+            return numPercent.toFixed(2) + '%';
+        }
+        if (format === 'Thousands') {
+             return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+        return String(value);
+    };
+
+    const finalDisplayedValue = formatValue(displayedValue, data?.styles.numberFormat);
+
+    // Generar estilos CSS
+    const cellStyles: React.CSSProperties = {
+        fontFamily: data?.styles.fontFamily || 'Inter, sans-serif',
+        fontSize: data?.styles.fontSize ? `${data.styles.fontSize}px` : '14px',
+        fontWeight: data?.styles.fontWeight || 'normal',
+        fontStyle: data?.styles.fontStyle || 'normal',
+        textDecoration: data?.styles.textDecoration || 'none',
+        textAlign: data?.styles.textAlign || 'left',
+        backgroundColor: data?.styles.backgroundColor || (isSelected ? '#333333' : '#1e1e1e'),
+        color: data?.styles.color || '#fff',
+        // Borde de celda por defecto (para separación)
+        border: isActive ? '2px solid #1a73e8' : '1px solid #333333',
+    };
+
+    // Sobreescribir el borde si se aplica un estilo de borde específico
+    if (data?.styles.borderStyle === 'all') {
+        cellStyles.border = isActive ? '2px solid #1a73e8' : '1px solid #555';
+    } else if (data?.styles.borderStyle === 'thickOutside') {
+        cellStyles.border = isActive ? '2px solid #1a73e8' : '2px solid #fff';
+    }
+
+    return (
+        <div
+            className={`flex-shrink-0 w-32 h-6 overflow-hidden whitespace-nowrap px-1 py-0.5 transition-colors duration-100 ${isActive ? 'z-20' : ''}`}
+            style={cellStyles}
+            onClick={() => handleCellClick(cellId)}
+            onContextMenu={(e) => handleContextMenu(e, 'cell', cellId)}
+        >
+            {/* Si la celda está activa, se muestra el input para la edición. 
+                Si no está activa, se muestra el valor renderizado.
+            */}
+            {isActive && activeCell === cellId ? (
+                <input
+                    ref={inputRef}
+                    type="text"
+                    className="w-full h-full bg-transparent outline-none border-none text-white text-sm"
+                    style={{ ...cellStyles, textAlign: cellStyles.textAlign || 'left' }}
+                    // Mostrar la fórmula si existe, de lo contrario, el valor
+                    value={cellInput}
+                    onChange={(e) => setCellInput(e.target.value)}
+                    onBlur={updateCellValue} // Aplicar valor al perder el foco
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                />
+            ) : (
+                finalDisplayedValue
+            )}
+        </div>
+    );
+});
 
 
 // --- COMPONENTE PRINCIPAL PacurHoja ---
@@ -346,15 +583,45 @@ const PacurHoja: React.FC = () => {
     });
     const menuRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const gridRef = useRef<HTMLDivElement>(null);
+
+    // --- MANEJO DE ESTADO Y CÁLCULO ---
+
+    // Función para recálculo completo de la hoja
+    const recalculateSheet = useCallback((currentData: SheetData): SheetData => {
+        const recalculatedData: SheetData = {};
+
+        Object.keys(currentData).forEach(cellId => {
+            const cell = currentData[cellId];
+            if (cell.formula) {
+                // Si tiene fórmula, calcula el valor
+                recalculatedData[cellId] = {
+                    ...cell,
+                    // Usar currentData para calcular (evitar recursión infinita, pero mantener dependencias)
+                    calculatedValue: calculateValue(cell.formula, currentData),
+                };
+            } else {
+                // Si no tiene fórmula, el valor calculado es el valor
+                recalculatedData[cellId] = {
+                    ...cell,
+                    calculatedValue: cell.value,
+                };
+            }
+        });
+        return recalculatedData;
+    }, []);
+
 
     // --- EFECTOS DE CONTROL ---
 
-    // Sincronizar input con celda activa
+    // Sincronizar input con celda activa y enfocar el input
     useEffect(() => {
         if (activeCell) {
             const data = sheetData[activeCell];
+            // Mostrar la fórmula si existe, de lo contrario, el valor
             setCellInput(data?.formula || data?.value || '');
-            inputRef.current?.focus();
+             // Enfocar el input solo si está visible (manejado dentro de Cell)
+             // Nota: El input dentro de Cell está enfocado automáticamente si isActive
         } else {
             setCellInput('');
         }
@@ -371,6 +638,58 @@ const PacurHoja: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [menuRef]);
 
+    // Función que aplica el valor del input a la celda activa y recalcula
+    const updateCellValue = useCallback(() => {
+        if (!activeCell) return;
+
+        // No hacer nada si el valor no ha cambiado
+        const currentData = sheetData[activeCell];
+        const currentValue = currentData?.formula || currentData?.value || '';
+        if (cellInput === currentValue) {
+            return;
+        }
+
+        const isFormula = cellInput.startsWith('=');
+
+        // 1. Crear una versión temporal de los datos con el nuevo valor
+        const tempUpdatedData = {
+            ...sheetData,
+            [activeCell]: {
+                ...(sheetData[activeCell] || { value: '', styles: {} }),
+                value: cellInput,
+                formula: isFormula ? cellInput : undefined,
+                // El valor calculado de la celda activa se actualizará en la próxima etapa
+                calculatedValue: undefined,
+            },
+        };
+
+        // 2. Recalcular toda la hoja de cálculo usando los datos temporales
+        const finalUpdatedData = recalculateSheet(tempUpdatedData);
+
+        setSheetData(finalUpdatedData);
+        setDocState(prev => ({ ...prev, isDirty: true })); // Marcar como modificado
+    }, [activeCell, cellInput, sheetData, recalculateSheet]);
+
+
+    // Manejar tecla Enter para salir de la edición de celda
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            updateCellValue();
+            // Mover la celda activa hacia abajo (simulación básica de Excel)
+            if (activeCell) {
+                 const [row, col] = cellToCoords(activeCell);
+                 if (row !== null && col !== null && row < DEFAULT_ROWS - 1) {
+                    setActiveCell(coordsToCell(row + 1, col));
+                 } else {
+                    // Si es la última fila, desenfocar
+                    setActiveCell(null);
+                 }
+            }
+        }
+    }, [activeCell, updateCellValue]);
+
+
     // --- MANEJADORES DE ESTADO DE ARCHIVO (Guardar/Abrir) ---
 
     // Función para marcar el documento como modificado
@@ -381,101 +700,62 @@ const PacurHoja: React.FC = () => {
     // Simulación de Guardar (usa localStorage)
     const handleSave = () => {
         if (!docState.isDirty) {
-            console.log('El archivo ya está guardado.');
+            console.log(`[ALERTA] Archivo '${docState.fileName}' ya está guardado.`);
             return;
         }
         try {
-            const dataToSave = JSON.stringify(sheetData);
-            localStorage.setItem(`pacur_sheet_${docState.fileName}`, dataToSave);
+            // Guardamos solo los datos crudos (valor y estilos), no los calculados
+            const dataToSave: SheetData = {};
+            Object.keys(sheetData).forEach(cellId => {
+                const cell = sheetData[cellId];
+                dataToSave[cellId] = {
+                    value: cell.value,
+                    formula: cell.formula,
+                    styles: cell.styles
+                };
+            });
+
+            localStorage.setItem(`pacur_sheet_${docState.fileName}`, JSON.stringify(dataToSave));
             setDirty(false);
             console.log(`Archivo '${docState.fileName}' guardado con éxito.`);
-            // Usar console.log en lugar de alert()
-            console.log(`[ALERTA] Archivo '${docState.fileName}' guardado con éxito.`);
         } catch (error) {
             console.error('Error al guardar:', error);
-            // Usar console.log en lugar de alert()
             console.log('[ALERTA] Error al intentar guardar el archivo.');
         }
     };
 
     // Simulación de Abrir
     const handleOpen = () => {
+        setBackstageVisible(false);
         const savedData = localStorage.getItem(`pacur_sheet_${docState.fileName}`);
         if (savedData) {
             try {
                 const loadedSheetData: SheetData = JSON.parse(savedData);
-                setSheetData(loadedSheetData);
+                // Recalcular la hoja después de cargar los datos crudos
+                const updatedData = recalculateSheet(loadedSheetData);
+
+                setSheetData(updatedData);
                 setDirty(false);
-                setBackstageVisible(false);
                 console.log(`Archivo '${docState.fileName}' abierto.`);
             } catch (error) {
                 console.error('Error al cargar datos:', error);
-                // Usar console.log en lugar de alert()
                 console.log('[ALERTA] Error al cargar el archivo guardado.');
             }
         } else {
-            setBackstageVisible(false);
-            console.log('No hay datos guardados para cargar.');
+            console.log(`[ALERTA] No se encontró el archivo '${docState.fileName}' en el almacenamiento local.`);
         }
     };
 
     // Simulación de Guardar Como (muestra la interfaz)
     const handleSaveAs = (newFileName: string, format: string) => {
-        // En una app real, aquí se llamaría a una API de descarga/guardado.
-        const fileExtension = format === 'excel' ? '.xlsx' : '.pacur';
-        console.log(`Simulando Guardar como: ${newFileName}${fileExtension}`);
-        // Usar console.log en lugar de alert()
-        console.log(`[ALERTA] Simulando Guardar como: ${newFileName}${fileExtension}. Ubicación: [Elegir]`);
+        const fileExtension = format === 'excel' ? '.xlsx' : format === 'pacur' ? '.pacur' : '.csv';
+        console.log(`[ALERTA] Simulando Guardar como: ${newFileName}${fileExtension}.`);
         setDocState(prev => ({ ...prev, fileName: newFileName, isDirty: false }));
         setSaveAsVisible(false);
         setBackstageVisible(false);
     };
 
     // --- MANEJADORES DE LA HOJA DE CÁLCULO ---
-
-    /**
-     * Aplica el valor del input (fórmula o texto) a la celda activa.
-     */
-    const updateCellValue = () => {
-        if (!activeCell) return;
-
-        const isFormula = cellInput.startsWith('=');
-        // Recalcular el valor para manejar dependencias
-        const calculated = isFormula
-            ? calculateValue(cellInput, sheetData)
-            : cellInput;
-
-        setSheetData(prevData => {
-            const currentStyles = prevData[activeCell]?.styles || {};
-            // Forzar el recálculo de toda la hoja si es una fórmula (para propagar cambios)
-            const updatedData = {
-                ...prevData,
-                [activeCell]: {
-                    value: cellInput,
-                    formula: isFormula ? cellInput : undefined,
-                    calculatedValue: calculated,
-                    styles: currentStyles,
-                },
-            };
-
-            // Recalcular todas las celdas que contienen fórmulas
-            const recalculatedData: SheetData = {};
-            Object.keys(updatedData).forEach(cellId => {
-                const cell = updatedData[cellId];
-                if (cell.formula) {
-                    recalculatedData[cellId] = {
-                        ...cell,
-                        calculatedValue: calculateValue(cell.formula, updatedData),
-                    };
-                } else {
-                    recalculatedData[cellId] = cell;
-                }
-            });
-
-            return recalculatedData;
-        });
-        setDirty(true);
-    };
 
     /**
      * Aplica estilos de formato a la celda activa.
@@ -491,19 +771,15 @@ const PacurHoja: React.FC = () => {
 
             let newStyles = { ...currentStyles };
 
-            if (styleKey === 'fontWeight' || styleKey === 'fontStyle' || styleKey === 'textDecoration') {
-                // Toggle para estilos de fuente (N, K, S)
+            // Lógica de toggle para estilos binarios (Negrita, Cursiva, Subrayado, Alineación)
+            if (['fontWeight', 'fontStyle', 'textDecoration', 'textAlign'].includes(styleKey)) {
+                // Si el estilo ya tiene el valor, se desactiva (undefined); si no, se aplica.
                 newStyles[styleKey] = (currentStyles[styleKey] === value) ? undefined : value;
-            } else if (styleKey === 'textAlign') {
-                 // Toggle para alineación (solo un valor activo a la vez)
-                newStyles[styleKey] = (currentStyles[styleKey] === value) ? undefined : value;
-            } else if (styleKey === 'numberFormat') {
-                // Aplicar formato de número
-                newStyles[styleKey] = value;
             } else {
-                // Aplicar color de fuente, color de relleno, tamaño, etc.
+                // Aplicar color de fuente, color de relleno, tamaño, formato numérico, etc.
                 newStyles[styleKey] = value;
             }
+
 
             return {
                 ...prevData,
@@ -518,35 +794,49 @@ const PacurHoja: React.FC = () => {
 
     // --- MANEJADORES DE SELECCIÓN ---
 
-    const handleCellClick = (cellId: string) => {
+    const handleCellClick = useCallback((cellId: string) => {
         if (contextMenuVisible) setContextMenuVisible(false);
+        // Aplicar el valor de la celda previamente activa ANTES de cambiar
+        if (activeCell && activeCell !== cellId) {
+             updateCellValue();
+        }
+
         setActiveCell(cellId);
         setSelectedRows(new Set());
         setSelectedCols(new Set());
-        // No llamar a updateCellValue aquí, solo al perder el foco del input o al presionar Enter.
-    };
+    }, [activeCell, contextMenuVisible, updateCellValue]);
 
     const handleRowHeaderClick = (row: number) => {
+        // Al hacer clic en un encabezado, aplica el valor de la celda activa primero.
+        if (activeCell) updateCellValue();
+
         setSelectedRows(new Set([row]));
         setSelectedCols(new Set());
-        setActiveCell(null);
+        setActiveCell(coordsToCell(row, 0)); // Mover el foco al inicio de la fila
         setContextMenuVisible(false);
     };
 
     const handleColHeaderClick = (col: number) => {
+        if (activeCell) updateCellValue();
+
         setSelectedCols(new Set([col]));
         setSelectedRows(new Set());
-        setActiveCell(null);
+        setActiveCell(coordsToCell(0, col)); // Mover el foco al inicio de la columna
         setContextMenuVisible(false);
     };
 
     // --- MENÚ CONTEXTUAL ---
 
-    const handleContextMenu = (e: React.MouseEvent, target: 'cell' | 'row' | 'col') => {
+    const handleContextMenu = (e: React.MouseEvent, target: 'cell' | 'row' | 'col', cellId?: string) => {
         e.preventDefault();
         setContextMenuTarget(target);
         setContextMenuPosition({ x: e.clientX, y: e.clientY });
         setContextMenuVisible(true);
+
+        if (target === 'cell' && cellId) {
+            // Asegurarse de que la celda clickeada sea la activa para las acciones
+            handleCellClick(cellId);
+        }
     };
 
     const renderContextMenu = () => {
@@ -554,16 +844,31 @@ const PacurHoja: React.FC = () => {
 
         const options = [];
         if (contextMenuTarget === 'cell') {
-            options.push('Cortar', 'Copiar', 'Pegar', 'Insertar comentario');
+            options.push('Cortar', 'Copiar', 'Pegar', 'Insertar comentario', 'Borrar contenido');
         } else if (contextMenuTarget === 'row') {
-            options.push('Insertar', 'Eliminar', 'Ocultar', 'Alto de fila...');
+            options.push('Insertar fila', 'Eliminar fila', 'Ocultar fila', 'Alto de fila...');
         } else if (contextMenuTarget === 'col') {
-            options.push('Insertar', 'Eliminar', 'Ocultar', 'Ancho de columna...');
+            options.push('Insertar columna', 'Eliminar columna', 'Ocultar columna', 'Ancho de columna...');
         }
 
         const handleMenuAction = (action: string) => {
-            // Usar console.log en lugar de alert()
-            console.log(`[ALERTA] Acción simulada: ${action} en ${contextMenuTarget}`);
+            // Lógica simulada para las acciones del menú contextual
+            if (action === 'Borrar contenido' && activeCell) {
+                setSheetData(prevData => {
+                    const newData = { ...prevData };
+                    const cell = newData[activeCell];
+                    if (cell) {
+                         // Restablecer el valor, fórmula y valor calculado
+                        newData[activeCell] = { ...cell, value: '', formula: undefined, calculatedValue: '' };
+                    }
+                    // Recalcular toda la hoja para propagar el borrado
+                    return recalculateSheet(newData);
+                });
+                setCellInput('');
+                setDirty(true);
+            } else {
+                console.log(`[ALERTA] Acción simulada: ${action} en ${contextMenuTarget}`);
+            }
             setContextMenuVisible(false);
         };
 
@@ -593,13 +898,13 @@ const PacurHoja: React.FC = () => {
      * Componente para dibujar la vista Backstage (Archivo)
      */
     const renderBackstage = () => {
-        // [CORRECCIÓN] Ahora renderiza los nuevos componentes condicionalmente
+        // Renderiza vistas modales anidadas
         if (saveAsVisible) {
             return (
                 <SaveAsView
                     docState={docState}
                     handleSaveAs={handleSaveAs}
-                    onClose={() => { setSaveAsVisible(false); setBackstageVisible(false); }}
+                    onClose={() => { setSaveAsVisible(false); setBackstageVisible(true); }}
                 />
             );
         }
@@ -609,7 +914,7 @@ const PacurHoja: React.FC = () => {
                  <PrintView
                     printSettings={printSettings}
                     setPrintSettings={setPrintSettings}
-                    onClose={() => setPrintVisible(false)}
+                    onClose={() => { setPrintVisible(false); setBackstageVisible(true); }}
                  />
              );
         }
@@ -629,13 +934,13 @@ const PacurHoja: React.FC = () => {
                                 if (option === 'Guardar como') return setSaveAsVisible(true);
                                 if (option === 'Imprimir') return setPrintVisible(true);
                                 if (option === 'Nuevo') {
-                                    // Usar console.log en lugar de window.confirm
+                                    // Usar window.confirm para una simulación simple de confirmación
                                     if (docState.isDirty && !window.confirm('Hay cambios sin guardar. ¿Desea crear un nuevo libro?')) return;
                                     setSheetData({});
                                     setDocState({ fileName: 'Libro Nuevo', isDirty: false, data: {}, activeSheet: 'Hoja1' });
+                                    setActiveCell(null);
                                     return setBackstageVisible(false);
                                 }
-                                // Usar console.log en lugar de alert()
                                 console.log(`[ALERTA] Acción simulada: ${option}`);
                             }}
                         >
@@ -654,27 +959,10 @@ const PacurHoja: React.FC = () => {
                 <div className="flex-1 p-8 overflow-auto">
                     <h2 className="text-2xl font-light mb-6">Información</h2>
                     <div className="bg-gray-800 dark:bg-gray-700 p-6 rounded-lg max-w-lg">
-                        <p className="text-xl mb-4">Estado del archivo: {docState.fileName} {docState.isDirty ? '(Modificado)' : '(Guardado)'}</p>
-                        <p className="text-md text-gray-400">Haga clic en 'Guardar' para guardar el estado actual de la hoja de cálculo en el navegador.</p>
+                        <p className="text-xl mb-4">Estado del archivo: **{docState.fileName}** {docState.isDirty ? '*(Modificado)*' : '*(Guardado)*'}</p>
+                        <p className="text-md text-gray-400">Haga clic en 'Guardar' para guardar el estado actual de la hoja de cálculo en el navegador (LocalStorage).</p>
                         <div className="mt-4">
                             <button className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold" onClick={handleSave}>Guardar Ahora</button>
-                        </div>
-                    </div>
-                    <div className="mt-8">
-                        <h3 className="text-xl mb-4">Plantillas Recientes</h3>
-                        <div className="grid grid-cols-2 gap-4 max-w-2xl">
-                            <div className="bg-gray-700 dark:bg-gray-600 p-4 rounded-lg cursor-pointer hover:bg-indigo-600 transition"
-                                 onClick={() => setBackstageVisible(false)}>
-                                <div className="text-4xl mb-2">📄</div>
-                                <p className="font-semibold">Libro en blanco</p>
-                                <p className="text-xs text-gray-400">Comience desde cero</p>
-                            </div>
-                            <div className="bg-gray-700 dark:bg-gray-600 p-4 rounded-lg cursor-pointer hover:bg-indigo-600 transition"
-                                 onClick={() => console.log('[ALERTA] Simulando abrir plantilla de Presupuesto...')}>
-                                <div className="text-4xl mb-2">💰</div>
-                                <p className="font-semibold">Presupuesto Personal</p>
-                                <p className="text-xs text-gray-400">Use una plantilla</p>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -694,87 +982,11 @@ const PacurHoja: React.FC = () => {
                 title={label}
                 className={`p-2 rounded-md transition duration-150 ${isActive ? 'bg-indigo-700 text-white' : 'hover:bg-gray-600 text-gray-200'} ${className}`}
                 onClick={action}
+                disabled={!activeCell && iconName !== 'paste' && iconName !== 'cut' && iconName !== 'copy'}
             >
                 <i className={`fas fa-${iconName}`}></i>
             </button>
         );
-
-        // [CORRECCIÓN]: Se eliminó el parámetro 'iconName' no utilizado.
-        const renderDropdown = (label: string, items: { label: string, action: () => void }[], primaryIconName: string) => {
-             const [isOpen, setIsOpen] = useState(false);
-             const dropdownRef = useRef<HTMLDivElement>(null);
-
-             useEffect(() => {
-                const handleClickOutside = (event: MouseEvent) => {
-                    if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                        setIsOpen(false);
-                    }
-                };
-                document.addEventListener('mousedown', handleClickOutside);
-                return () => document.removeEventListener('mousedown', handleClickOutside);
-             }, []);
-
-
-             return (
-                 <div className="relative inline-block" ref={dropdownRef}>
-                     <button
-                         title={label}
-                         className="p-2 rounded-md hover:bg-gray-600 text-gray-200 flex items-center"
-                         onClick={() => setIsOpen(!isOpen)}
-                     >
-                         <i className={`fas fa-${primaryIconName}`}></i> {/* Usamos el primaryIconName en su lugar */}
-                         <i className="fas fa-caret-down ml-1 text-xs"></i>
-                     </button>
-                     {isOpen && (
-                         <div className="absolute top-full left-0 mt-1 w-48 bg-gray-700 border border-gray-600 rounded-md shadow-lg z-50">
-                             {items.map(item => (
-                                 <div
-                                     key={item.label}
-                                     className="px-3 py-2 text-sm text-gray-100 hover:bg-indigo-600 cursor-pointer"
-                                     onClick={() => { item.action(); setIsOpen(false); }}
-                                 >
-                                     {item.label}
-                                 </div>
-                             ))}
-                         </div>
-                     )}
-                 </div>
-             );
-        };
-
-        const renderColorPicker = (label: string, styleKey: 'backgroundColor' | 'color') => {
-            const [color, setColor] = useState(currentStyles[styleKey] || '#ffffff');
-            const colorRef = useRef<HTMLInputElement>(null);
-
-            const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                const newColor = e.target.value;
-                setColor(newColor);
-                applyStyleToActiveCell(styleKey, newColor);
-            };
-
-            return (
-                <div className="relative inline-block" title={label}>
-                    <button
-                        className="p-2 rounded-md hover:bg-gray-600 text-gray-200 text-lg"
-                        onClick={() => colorRef.current?.click()}
-                    >
-                         {/* Icono con una barra que muestra el color actual */}
-                        <div className="relative">
-                            <i className={`fas fa-fill-drip ${styleKey === 'color' ? 'fa-a' : ''}`}></i>
-                            <div className="absolute -bottom-1 left-0 right-0 h-[3px] rounded-full" style={{ backgroundColor: currentStyles[styleKey] || 'transparent' }}></div>
-                        </div>
-                    </button>
-                    <input
-                        type="color"
-                        ref={colorRef}
-                        value={color}
-                        onChange={handleChange}
-                        className="absolute opacity-0 pointer-events-none w-0 h-0"
-                    />
-                </div>
-            );
-        };
-
 
         // --- PESTAÑAS Y CONTENIDO ---
 
@@ -782,9 +994,9 @@ const PacurHoja: React.FC = () => {
             'Inicio': (
                 <>
                     {/* Grupo Portapapeles */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[100px]">
                         {renderButton('Pegar', 'paste', () => console.log('[ALERTA] Simulando Pegar...'), false, 'h-8')}
-                        <div className="flex mt-1">
+                        <div className="flex mt-1 space-x-1">
                             {renderButton('Cortar', 'cut', () => console.log('[ALERTA] Simulando Cortar...'))}
                             {renderButton('Copiar', 'copy', () => console.log('[ALERTA] Simulando Copiar...'))}
                         </div>
@@ -792,23 +1004,25 @@ const PacurHoja: React.FC = () => {
                     </div>
 
                     {/* Grupo Fuente */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[220px]">
                         <div className="flex space-x-1 mb-1">
                              {/* Selector de Fuente */}
                             <select
                                 className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm"
                                 value={currentStyles.fontFamily || 'Inter'}
                                 onChange={(e) => applyStyleToActiveCell('fontFamily', e.target.value)}
+                                disabled={!activeCell}
                             >
-                                {['Inter', 'Arial', 'Times New Roman'].map(font => <option key={font} value={font}>{font}</option>)}
+                                {['Inter', 'Arial', 'Times New Roman', 'Courier New'].map(font => <option key={font} value={font}>{font}</option>)}
                             </select>
                              {/* Selector de Tamaño */}
                             <select
-                                className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm"
+                                className="p-1 bg-gray-600 border border-gray-700 rounded text-gray-100 text-sm w-16"
                                 value={currentStyles.fontSize || 14}
                                 onChange={(e) => applyStyleToActiveCell('fontSize', parseInt(e.target.value))}
+                                disabled={!activeCell}
                             >
-                                {[10, 12, 14, 16, 18, 20].map(size => <option key={size} value={size}>{size}</option>)}
+                                {[8, 10, 12, 14, 16, 18, 20, 24, 36].map(size => <option key={size} value={size}>{size}</option>)}
                             </select>
                         </div>
                         <div className="flex items-center space-x-1">
@@ -816,25 +1030,45 @@ const PacurHoja: React.FC = () => {
                             {renderButton('Negrita', 'bold', () => applyStyleToActiveCell('fontWeight', 'bold'), currentStyles.fontWeight === 'bold', 'font-bold')}
                             {renderButton('Cursiva', 'italic', () => applyStyleToActiveCell('fontStyle', 'italic'), currentStyles.fontStyle === 'italic', 'italic')}
                             {renderButton('Subrayado', 'underline', () => applyStyleToActiveCell('textDecoration', 'underline'), currentStyles.textDecoration === 'underline', 'underline')}
+                            {/* Tachado */}
+                             {renderButton('Tachado', 'strikethrough', () => applyStyleToActiveCell('textDecoration', 'line-through'), currentStyles.textDecoration === 'line-through')}
                             {/* Bordes Dropdown */}
-                            {renderDropdown('Bordes', [
-                                { label: 'Sin borde', action: () => applyStyleToActiveCell('borderStyle', 'none') },
-                                { label: 'Todos los bordes', action: () => applyStyleToActiveCell('borderStyle', 'all') },
-                                { label: 'Borde inferior', action: () => applyStyleToActiveCell('borderStyle', 'bottom') },
-                                { label: 'Borde exterior grueso', action: () => applyStyleToActiveCell('borderStyle', 'thickOutside') },
-                            ], 'border-all')}
+                            <DropdownControl
+                                label="Bordes"
+                                primaryIconName="border-all"
+                                items={[
+                                    { label: 'Sin borde', action: () => applyStyleToActiveCell('borderStyle', 'none') },
+                                    { label: 'Todos los bordes', action: () => applyStyleToActiveCell('borderStyle', 'all') },
+                                    { label: 'Borde inferior', action: () => applyStyleToActiveCell('borderStyle', 'bottom') },
+                                    { label: 'Borde exterior grueso', action: () => applyStyleToActiveCell('borderStyle', 'thickOutside') },
+                                ]}
+                            />
                             {/* Color de Relleno */}
-                            {renderColorPicker('Color de Relleno', 'backgroundColor')}
+                            <ColorPickerControl
+                                label="Color de Relleno"
+                                styleKey='backgroundColor'
+                                defaultColor='#1e1e1e'
+                                activeCell={activeCell}
+                                currentStyles={currentStyles}
+                                applyStyleToActiveCell={applyStyleToActiveCell}
+                            />
                             {/* Color de Fuente */}
-                            {renderColorPicker('Color de Fuente', 'color')}
+                            <ColorPickerControl
+                                label="Color de Fuente"
+                                styleKey='color'
+                                defaultColor='#ffffff'
+                                activeCell={activeCell}
+                                currentStyles={currentStyles}
+                                applyStyleToActiveCell={applyStyleToActiveCell}
+                            />
                         </div>
                         <span className="text-xs text-gray-400 mt-1">Fuente</span>
                     </div>
 
                     {/* Grupo Alineación */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[150px]">
                         <div className="flex space-x-1">
-                             {/* Botones de Alineación */}
+                             {/* Botones de Alineación Horizontal */}
                             {renderButton('Alinear a la izquierda', 'align-left', () => applyStyleToActiveCell('textAlign', 'left'), currentStyles.textAlign === 'left')}
                             {renderButton('Alinear al centro', 'align-center', () => applyStyleToActiveCell('textAlign', 'center'), currentStyles.textAlign === 'center')}
                             {renderButton('Alinear a la derecha', 'align-right', () => applyStyleToActiveCell('textAlign', 'right'), currentStyles.textAlign === 'right')}
@@ -847,25 +1081,39 @@ const PacurHoja: React.FC = () => {
                     </div>
 
                     {/* Grupo Número */}
-                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center">
+                    <div className="flex flex-col border-r border-gray-700 pr-3 mr-3 items-center min-w-[180px]">
                          <div className="flex space-x-1">
-                            {renderDropdown('Formato de Número', [
-                                { label: 'General', action: () => applyStyleToActiveCell('numberFormat', 'General') },
-                                { label: 'Moneda', action: () => applyStyleToActiveCell('numberFormat', 'Currency') },
-                                { label: 'Porcentaje', action: () => applyStyleToActiveCell('numberFormat', 'Percentage') },
-                                { label: 'Número (separador de miles)', action: () => applyStyleToActiveCell('numberFormat', 'Thousands') },
-                            ], 'hashtag')}
+                            <DropdownControl
+                                label="Formato de Número"
+                                primaryIconName="list-ul"
+                                items={[
+                                    { label: 'General', action: () => applyStyleToActiveCell('numberFormat', 'General') },
+                                    { label: 'Moneda', action: () => applyStyleToActiveCell('numberFormat', 'Currency') },
+                                    { label: 'Porcentaje', action: () => applyStyleToActiveCell('numberFormat', 'Percentage') },
+                                    { label: 'Número (separador de miles)', action: () => applyStyleToActiveCell('numberFormat', 'Thousands') },
+                                ]}
+                            />
                             {renderButton('Formato Moneda', 'dollar-sign', () => applyStyleToActiveCell('numberFormat', 'Currency'), currentStyles.numberFormat === 'Currency')}
                             {renderButton('Estilo Porcentual', 'percent', () => applyStyleToActiveCell('numberFormat', 'Percentage'), currentStyles.numberFormat === 'Percentage')}
                             {renderButton('Estilo Millares', 'comma', () => applyStyleToActiveCell('numberFormat', 'Thousands'), currentStyles.numberFormat === 'Thousands')}
                         </div>
                         <span className="text-xs text-gray-400 mt-1">Número</span>
                     </div>
+
+                    {/* Grupo Edición */}
+                    <div className="flex flex-col items-center min-w-[100px]">
+                        {renderButton('Autosuma', 'calculator', () => console.log('[ALERTA] Simulando Autosuma...'))}
+                        <div className="flex mt-1 space-x-1">
+                            {renderButton('Ordenar y filtrar', 'sort', () => console.log('[ALERTA] Simulando Ordenar...'))}
+                            {renderButton('Buscar', 'search', () => console.log('[ALERTA] Simulando Buscar...'))}
+                        </div>
+                        <span className="text-xs text-gray-400 mt-1">Edición</span>
+                    </div>
                 </>
             ),
-            'Insertar': <span className="text-gray-400">Opciones de Insertar...</span>,
-            'Fórmulas': <span className="text-gray-400">Opciones de Fórmulas...</span>,
-            'Datos': <span className="text-gray-400">Opciones de Datos...</span>,
+            'Insertar': <div className="p-2 text-gray-400">Opciones de Insertar... (Gráficos, Tablas, Imágenes)</div>,
+            'Fórmulas': <div className="p-2 text-gray-400">Opciones de Fórmulas... (Autosuma, Lógicas, Financieras)</div>,
+            'Datos': <div className="p-2 text-gray-400">Opciones de Datos... (Obtener Datos, Filtros, Análisis de hipótesis)</div>,
         };
 
         return (
@@ -897,220 +1145,117 @@ const PacurHoja: React.FC = () => {
         );
     };
 
-    /**
-     * Componente para renderizar una celda individual.
-     */
-    const Cell: React.FC<{ row: number, col: number }> = useMemo(() => {
-        return ({ row, col }) => {
-            const cellId = coordsToCell(row, col);
-            const data = sheetData[cellId];
-            const isActive = activeCell === cellId;
-            const isSelectedRow = selectedRows.has(row);
-            const isSelectedCol = selectedCols.has(col);
-            const isSelected = isSelectedRow || isSelectedCol;
+    // --- CUERPO PRINCIPAL DEL COMPONENTE ---
 
-            // Determinar valor a mostrar
-            const displayedValue = data?.calculatedValue !== undefined ? String(data.calculatedValue) : data?.value || '';
-
-            // Aplicar formato de número
-            const formatValue = (value: string | number, format: CellStyle['numberFormat']) => {
-                const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g, "")) : value;
-                if (isNaN(num)) return value; // Devolver tal cual si no es numérico
-
-                if (format === 'Currency') {
-                    return num.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-                }
-                if (format === 'Percentage') {
-                    return (num * 100).toFixed(2) + '%';
-                }
-                if (format === 'Thousands') {
-                     return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-                }
-                return String(value);
-            };
-
-            const finalDisplayedValue = formatValue(displayedValue, data?.styles.numberFormat);
-
-            // Generar estilos CSS
-            const cellStyles: React.CSSProperties = {
-                ...data?.styles,
-                fontFamily: data?.styles.fontFamily || 'Inter, sans-serif',
-                fontSize: data?.styles.fontSize ? `${data.styles.fontSize}px` : '14px',
-                fontWeight: data?.styles.fontWeight || 'normal',
-                fontStyle: data?.styles.fontStyle || 'normal',
-                textDecoration: data?.styles.textDecoration || 'none',
-                textAlign: data?.styles.textAlign || 'left',
-                backgroundColor: data?.styles.backgroundColor || (isSelected ? '#353535' : '#1e1e1e'),
-                color: data?.styles.color || '#fff',
-                border: isActive ? '2px solid #1a73e8' : '1px solid #333',
-                // Manejo de bordes
-                ...(data?.styles.borderStyle === 'none' && { border: isActive ? '2px solid #1a73e8' : '1px solid #333' }),
-                ...(data?.styles.borderStyle === 'all' && { border: isActive ? '2px solid #1a73e8' : '1px solid #555' }),
-                ...(data?.styles.borderStyle === 'bottom' && { borderBottom: '2px solid #fff' }),
-                ...(data?.styles.borderStyle === 'top' && { borderTop: '2px solid #fff' }),
-                ...(data?.styles.borderStyle === 'left' && { borderLeft: '2px solid #fff' }),
-                ...(data?.styles.borderStyle === 'right' && { borderRight: '2px solid #fff' }),
-                ...(data?.styles.borderStyle === 'outside' && { boxShadow: `inset 0 0 0 1px #fff` }),
-                ...(data?.styles.borderStyle === 'thickOutside' && { boxShadow: `inset 0 0 0 2px #fff` }),
-            };
-
-            // Asegurar que las celdas seleccionadas mantengan su estilo de borde principal si no hay un borde activo
-            if (isSelected && !isActive && !data?.styles.borderStyle) {
-                 cellStyles.backgroundColor = '#353535';
-                 cellStyles.border = '1px solid #555';
-            }
-
-
-            return (
-                <div
-                    className={`h-7 px-1 whitespace-nowrap overflow-hidden flex items-center ${isActive ? 'z-20' : 'z-10'}`}
-                    style={cellStyles}
-                    onClick={() => handleCellClick(cellId)}
-                    onDoubleClick={() => setActiveCell(cellId)}
-                    onContextMenu={(e) => handleContextMenu(e, 'cell')}
-                >
-                    {isActive ? (
-                        <input
-                            ref={inputRef}
-                            type="text"
-                            value={cellInput}
-                            onChange={(e) => setCellInput(e.target.value)}
-                            onBlur={updateCellValue}
-                            onKeyDown={(e) => e.key === 'Enter' && updateCellValue()}
-                            className="w-full h-full bg-transparent border-none outline-none text-white p-0 m-0"
-                            style={{ ...cellStyles, backgroundColor: 'transparent', textAlign: cellStyles.textAlign }}
-                        />
-                    ) : (
-                        finalDisplayedValue
-                    )}
-                </div>
-            );
-        };
-    }, [activeCell, cellInput, sheetData, selectedRows, selectedCols, updateCellValue]); // Se añade updateCellValue a las dependencias.
-
-    const renderGrid = () => {
-        const rows = Array.from({ length: DEFAULT_ROWS }, (_, r) => r);
-        const cols = Array.from({ length: DEFAULT_COLS }, (_, c) => c);
-
-        return (
-            <div className="overflow-auto flex-1 p-2 bg-[#1e1e1e]">
-                <div className="inline-grid gap-0" style={{
-                    gridTemplateColumns: `40px repeat(${DEFAULT_COLS}, 100px)`
-                }}>
-                    {/* Celda superior izquierda vacía */}
-                    <div className="h-7 w-10 bg-gray-800 dark:bg-[#333] border-b border-r border-gray-600 dark:border-gray-500 sticky top-0 left-0 z-30"></div>
-
-                    {/* Encabezados de Columna */}
-                    {cols.map((col) => (
-                        <div
-                            key={col}
-                            className={`h-7 flex items-center justify-center font-bold text-gray-300 bg-gray-800 dark:bg-[#333] border-b border-r border-gray-600 dark:border-gray-500 cursor-pointer sticky top-0 z-30 ${selectedCols.has(col) ? 'bg-indigo-800 hover:bg-indigo-700' : 'hover:bg-gray-700'}`}
-                            onClick={() => handleColHeaderClick(col)}
-                            onContextMenu={(e) => handleContextMenu(e, 'col')}
-                        >
-                            {COL_HEADERS[col % 26]}
-                        </div>
-                    ))}
-
-                    {/* Filas y Celdas */}
-                    {rows.map((row) => (
-                        <React.Fragment key={row}>
-                            {/* Encabezado de Fila */}
-                            <div
-                                className={`h-7 flex items-center justify-center font-bold text-gray-300 bg-gray-800 dark:bg-[#333] border-r border-gray-600 dark:border-gray-500 cursor-pointer sticky left-0 z-30 ${selectedRows.has(row) ? 'bg-indigo-800 hover:bg-indigo-700' : 'hover:bg-gray-700'}`}
-                                onClick={() => handleRowHeaderClick(row)}
-                                onContextMenu={(e) => handleContextMenu(e, 'row')}
-                            >
-                                {row + 1}
-                            </div>
-                            {/* Celdas */}
-                            {cols.map((col) => (
-                                <Cell key={col} row={row} col={col} />
-                            ))}
-                        </React.Fragment>
-                    ))}
-                </div>
-            </div>
-        );
-    };
+    if (backstageVisible) {
+        return renderBackstage();
+    }
 
     return (
-        <div className="flex flex-col h-screen w-full bg-[#1e1e1e] font-sans">
-            <style>{`
-                /* Estilos globales para la hoja de cálculo */
-                body {
-                    margin: 0;
-                    padding: 0;
-                    background-color: #1e1e1e;
-                    color: white;
-                }
-                .ribbon-icon {
-                    width: 20px;
-                    height: 20px;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-                .active-style {
-                    background-color: #1f3a5f !important; /* Azul oscuro para estilos activos */
-                }
-            `}</style>
-            
-            {/* 1. Vista Backstage (Archivo) */}
-            {backstageVisible && renderBackstage()}
+        <div className="flex flex-col h-screen w-full bg-[#1e1e1e] text-white font-sans overflow-hidden">
+            {/* 1. RIBBON (Barra de Herramientas) */}
+            {renderToolbar()}
 
-            {/* 2. Barra de Herramientas (Ribbon) */}
-            {!backstageVisible && renderToolbar()}
+            {/* 2. BARRA DE FÓRMULA */}
+            <div className="flex items-center p-2 bg-gray-700 dark:bg-[#2e2e2e] border-b border-gray-600 shadow-md">
+                <div className="w-16 h-6 flex-shrink-0 bg-gray-600 rounded-sm text-center font-bold text-sm leading-6 mr-2 cursor-pointer border border-gray-500"
+                     onClick={() => activeCell && handleCellClick(activeCell)}>
+                    {activeCell || 'A1'}
+                </div>
+                <div className="flex-1 bg-gray-800 border border-gray-600 rounded-sm p-1">
+                    <input
+                        type="text"
+                        ref={inputRef}
+                        className="w-full bg-transparent outline-none text-white text-sm"
+                        placeholder="Fórmula o valor"
+                        value={cellInput}
+                        onChange={(e) => setCellInput(e.target.value)}
+                        onBlur={updateCellValue}
+                        onKeyDown={handleKeyDown}
+                        // La celda activa se encarga de llamar a `inputRef.current.focus()`
+                        readOnly={!activeCell}
+                    />
+                </div>
+            </div>
 
-            {/* 3. Barra de Fórmulas y Nombre de Celda */}
-            {!backstageVisible && (
-                <div className="flex h-8 bg-gray-800 dark:bg-[#333] items-center px-2 shadow-inner border-y border-gray-700 dark:border-gray-600">
-                    <div className="w-20 h-6 bg-gray-900 dark:bg-[#444] rounded flex items-center justify-center text-sm font-semibold text-white mr-2 shadow-inner">
-                        {activeCell || 'A1'}
+            {/* 3. CUADRÍCULA DE LA HOJA DE CÁLCULO */}
+            <div className="flex-1 overflow-auto relative">
+                <div className="min-w-max min-h-max absolute" ref={gridRef}>
+                    {/* Encabezado de la esquina superior izquierda */}
+                    <div className="sticky top-0 left-0 z-30 w-8 h-6 bg-gray-800 dark:bg-[#252526] border-b border-r border-gray-600"></div>
+
+                    {/* Encabezados de Columna */}
+                    <div className="sticky top-0 left-8 z-20 flex bg-gray-800 dark:bg-[#252526] shadow-md border-b border-gray-600">
+                        {Array.from({ length: DEFAULT_COLS }).map((_, col) => (
+                            <div
+                                key={col}
+                                className={`w-32 h-6 text-center font-bold text-xs leading-6 border-r border-gray-600 cursor-pointer transition-colors duration-100 flex-shrink-0
+                                    ${selectedCols.has(col) ? 'bg-indigo-700 text-white' : 'hover:bg-gray-700 text-gray-400'}`}
+                                onClick={() => handleColHeaderClick(col)}
+                                onContextMenu={(e) => handleContextMenu(e, 'col')}
+                            >
+                                {coordsToCell(0, col).replace(/[0-9]/g, '')}
+                            </div>
+                        ))}
                     </div>
-                    <div className="flex-1 h-6 bg-gray-900 dark:bg-[#444] rounded flex items-center px-2 text-white text-sm shadow-inner">
-                        {/* Se mantiene el input principal para que la edición no desaparezca al mover el foco */}
-                        {sheetData[activeCell || '']?.formula || sheetData[activeCell || '']?.value || ''}
+
+                    {/* Filas */}
+                    <div className="flex">
+                        {/* Encabezados de Fila (Izquierda) */}
+                        <div className="sticky left-0 top-6 z-20 flex flex-col bg-gray-800 dark:bg-[#252526] shadow-md border-r border-gray-600">
+                            {Array.from({ length: DEFAULT_ROWS }).map((_, row) => (
+                                <div
+                                    key={row}
+                                    className={`w-8 h-6 text-center font-bold text-xs leading-6 border-b border-gray-600 cursor-pointer transition-colors duration-100
+                                        ${selectedRows.has(row) ? 'bg-indigo-700 text-white' : 'hover:bg-gray-700 text-gray-400'}`}
+                                    onClick={() => handleRowHeaderClick(row)}
+                                    onContextMenu={(e) => handleContextMenu(e, 'row')}
+                                >
+                                    {row + 1}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Celdas de Datos */}
+                        <div className="flex flex-col">
+                            {Array.from({ length: DEFAULT_ROWS }).map((_, row) => (
+                                <div key={row} className="flex">
+                                    {Array.from({ length: DEFAULT_COLS }).map((_, col) => (
+                                        <Cell
+                                            key={col}
+                                            row={row}
+                                            col={col}
+                                            // Props para Cell
+                                            sheetData={sheetData}
+                                            activeCell={activeCell}
+                                            selectedRows={selectedRows}
+                                            selectedCols={selectedCols}
+                                            cellInput={cellInput}
+                                            updateCellValue={updateCellValue}
+                                            handleCellClick={handleCellClick}
+                                            handleContextMenu={handleContextMenu}
+                                            setCellInput={setCellInput}
+                                            handleKeyDown={handleKeyDown}
+                                            inputRef={inputRef}
+                                        />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
-            )}
+            </div>
 
-            {/* 4. Cuadrícula Principal */}
-            {!backstageVisible && renderGrid()}
+            {/* 4. BARRA DE ESTADO */}
+            <div className="h-6 flex items-center justify-between px-4 bg-gray-800 dark:bg-[#2e2e2e] border-t border-gray-600 text-xs text-gray-400">
+                <span>{docState.activeSheet} | {docState.fileName} {docState.isDirty ? '(*Modificado)' : ''}</span>
+                <span>Listo</span>
+            </div>
 
-            {/* 5. Barra de Estado Inferior */}
-            {!backstageVisible && (
-                <div className="flex h-6 bg-gray-800 dark:bg-[#333] items-center justify-between text-xs text-gray-400 px-3 border-t border-gray-700 dark:border-gray-600">
-                    <div className="flex space-x-4">
-                        <span className="cursor-pointer hover:text-white">✅ Listo</span>
-                        <span className="cursor-pointer hover:text-white">Hoja {docState.activeSheet}</span>
-                        <span className="text-white font-medium ml-4">{docState.fileName} {docState.isDirty ? '(Modificado)' : ''}</span>
-                    </div>
-                    <div className="flex space-x-3 items-center">
-                        {/* Vistas */}
-                        <i className="fas fa-grip-vertical cursor-pointer hover:text-white" title="Vista normal"></i>
-                        <i className="fas fa-pager cursor-pointer hover:text-white" title="Vista diseño de página"></i>
-                        <i className="fas fa-layer-group cursor-pointer hover:text-white" title="Vista previa de salto de página"></i>
-                        {/* Zoom */}
-                        <span className="ml-3">Zoom: 100%</span>
-                    </div>
-                </div>
-            )}
-
-            {/* Renderizar menú contextual */}
+            {/* Menú Contextual */}
             {renderContextMenu()}
         </div>
     );
 };
 
-// Componente Wrapper para demostración
-const DefaultApp = () => {
-    // No necesitamos items de ejemplo para esta versión, ya que el componente se enfoca en la interfaz de hoja de cálculo.
-    return (
-      <div className="h-screen w-screen">
-          <PacurHoja />
-      </div>
-    )
-}
-
-export default DefaultApp;
+export default PacurHoja;
