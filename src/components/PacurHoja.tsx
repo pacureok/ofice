@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 // Carga de iconos de Font Awesome para el Ribbon
 // Necesitarás agregar esta línea a tu HTML principal si no usas una herramienta de empaquetado:
