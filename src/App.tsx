@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react'; // <--- CORRECCIÓN: Cambiar la importación de React
 import PacurDoc from './components/PacurDoc';
-import PacurHoja from './components/PacurHoja'; // ¡Importa el nuevo componente!
+import PacurHoja from './components/PacurHoja'; 
 import './App.css'; 
 
 function App() {
@@ -12,20 +12,20 @@ function App() {
       case 'doc':
         return <PacurDoc />;
       case 'sheet':
-        return <PacurHoja />; // Renderiza la hoja de cálculo
+        return <PacurHoja />; 
       default: // 'home'
         return (
           <div className="menu-principal">
             <div className="opcion">
               <h2>PacurDoc (Documento)</h2>
-              <p>Crea, edita y guarda documentos con la extensión **.apd** (tipo Word).</p>
+              <p>Crea, edita y guarda documentos con la extensión .apd (tipo Word).</p>
               <button onClick={() => setCurrentPage('doc')} className="boton-acceso">
                 Abrir PacurDoc
               </button>
             </div>
             <div className="opcion">
               <h2>PacurHoja (Hoja de Cálculo)</h2>
-              <p>Crea, edita y guarda hojas de cálculo con la extensión **.aph** (tipo Excel).</p>
+              <p>Crea, edita y guarda hojas de cálculo con la extensión .aph (tipo Excel).</p>
               <button onClick={() => setCurrentPage('sheet')} className="boton-acceso">
                 Abrir PacurHoja
               </button>
