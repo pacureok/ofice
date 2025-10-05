@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'; // Solo se importa lo que se usa
-import React from 'react'; // Necesario para definir React.FC
+import { useState, useMemo } from 'react';
+import React from 'react'; 
 
 // Constantes para la cuadrícula
-const ROWS = 50; // Aumentamos las filas para que se parezca a una hoja real
-const COLS = 15; // Aumentamos las columnas (A a O)
+const ROWS = 50; 
+const COLS = 15; 
 
 // Tipo para almacenar los datos de la hoja de cálculo
 interface SheetData {
@@ -17,11 +17,13 @@ const getColHeaders = (count: number) => {
   );
 };
 
+// Expresión regular para encontrar referencias de celda (Ej: A1, B10, C1)
+// NOTA: Esta expresión también debe manejar referencias de varias letras si se extiende más allá de Z
+const CELL_REFERENCE_REGEX = /([A-Z]+[0-9]+)/g; 
+
 // --- Componente PacurHoja ---
 const PacurHoja: React.FC = () => {
-  // Estado para guardar el contenido de cada celda
   const [data, setData] = useState<SheetData>({});
-  // Estado para la celda actualmente seleccionada/editada
   const [activeCell, setActiveCell] = useState<string | null>(null);
   
   const colHeaders = useMemo(() => getColHeaders(COLS), []);
@@ -34,27 +36,63 @@ const PacurHoja: React.FC = () => {
     }));
   };
 
-  // Función de CÁLCULO simple (solo para demostración de la interfaz)
-  const calculateValue = (key: string): string => {
+  /**
+   * Resuelve el valor de una celda, buscando referencias circulares si es necesario.
+   * @param key La clave de la celda (ej: "A1").
+   * @param path Historial de celdas visitadas para detectar referencias circulares.
+   * @returns El valor calculado o un mensaje de error.
+   */
+  const calculateValue = (key: string, path: string[] = []): string => {
     const content = data[key] || '';
-    
-    if (content.startsWith('=')) {
-      try {
-        // En una implementación real, aquí se usaría un parser seguro, NO 'eval'
-        const formula = content.substring(1);
-        const result = eval(formula); 
-        return isNaN(result) ? '#ERROR' : result.toString();
-        
-      } catch (e) {
-        return '#FÓRMULA_INVÁLIDA';
-      }
+
+    // 1. Detectar referencia circular
+    if (path.includes(key)) {
+      return '#CIRCULAR';
     }
-    return content;
+
+    // 2. Si no es fórmula, devolver el contenido
+    if (!content.startsWith('=')) {
+      return content;
+    }
+
+    const formula = content.substring(1).trim();
+    
+    // 3. Sustituir referencias de celda por sus valores
+    const resolvedFormula = formula.replace(CELL_REFERENCE_REGEX, (match) => {
+      const referencedValue = calculateValue(match, [...path, key]);
+      
+      // Si la celda referenciada es un error o texto, se devuelve 0 o se propaga el error
+      const numValue = parseFloat(referencedValue);
+      
+      if (isNaN(numValue)) {
+        // Si el valor referenciado es texto o error, se trata como 0 para las operaciones matemáticas
+        return '0'; 
+      }
+      return numValue.toString();
+    });
+
+    // 4. Reemplazar el operador de exponenciación (^) por Math.pow
+    const finalFormula = resolvedFormula.replace(/\^/g, '**');
+
+    // 5. Evaluar la fórmula (¡Advertencia: usar 'eval' en producción no es seguro!)
+    try {
+      const result = new Function('return ' + finalFormula)();
+      
+      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+          // Limitar decimales para mejor visualización
+          return result.toFixed(2).replace(/\.00$/, ''); 
+      }
+      return '#ERROR_MATH';
+    } catch (e) {
+      return '#FÓRMULA_INVÁLIDA';
+    }
   };
+
 
   // Función para guardar como .aph
   const saveSheet = () => {
     const filename = "hoja_calculo.aph";
+    // Solo guardamos los datos, no los valores calculados
     const content = JSON.stringify(data, null, 2); 
 
     const blob = new Blob([content], { type: 'application/json' }); 
@@ -66,7 +104,19 @@ const PacurHoja: React.FC = () => {
     a.click();
     document.body.removeChild(a);
 
-    alert(`¡Hoja de cálculo ${filename} guardada con éxito!`);
+    // Utilizamos un mensaje box personalizado en lugar de alert
+    const messageBox = document.createElement('div');
+    messageBox.style.cssText = `
+        position: fixed; top: 20px; right: 20px; background-color: #4CAF50; color: white;
+        padding: 15px; border-radius: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        z-index: 1000; transition: opacity 0.5s;
+    `;
+    messageBox.textContent = `¡Hoja de cálculo ${filename} guardada con éxito!`;
+    document.body.appendChild(messageBox);
+    setTimeout(() => {
+        messageBox.style.opacity = '0';
+        setTimeout(() => document.body.removeChild(messageBox), 500);
+    }, 3000);
   };
 
   return (
@@ -117,6 +167,7 @@ const PacurHoja: React.FC = () => {
             type="text" 
             placeholder="Fórmula o valor" 
             value={activeCell ? data[activeCell] || '' : ''}
+            // Importante: El input ahora muestra la fórmula/valor del estado 'data'
             onChange={(e) => activeCell && handleCellChange(activeCell, e.target.value)}
             className="formula-input"
         />
@@ -137,6 +188,7 @@ const PacurHoja: React.FC = () => {
             
             {colHeaders.map(cHeader => {
               const cellKey = `${cHeader}${rIndex + 1}`;
+              // Llamamos a calculateValue para obtener el resultado
               const displayValue = calculateValue(cellKey);
               
               return (
@@ -157,4 +209,3 @@ const PacurHoja: React.FC = () => {
 };
 
 export default PacurHoja;
-
