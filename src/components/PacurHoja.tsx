@@ -92,7 +92,7 @@ const parseRange = (rangeString: string): string[] => {
 
     const startCol = colToIndex(startMatch[1]);
     const startRow = parseInt(startMatch[2], 10) - 1;
-    const endCol = colToIndex(endMatch[1]);
+    const endCol = colToIndex(endMatch[2]);
     const endRow = parseInt(endMatch[2], 10) - 1;
 
     const cells: string[] = [];
@@ -109,8 +109,6 @@ const parseRange = (rangeString: string): string[] => {
     }
     return cells;
 };
-
-// --- LÓGICA DE CÁLCULO DE FÓRMULAS ---
 
 /**
  * Calcula el valor de una celda, manejando fórmulas simples y funciones.
@@ -171,6 +169,155 @@ const calculateValue = (expression: string, sheetData: SheetData): string | numb
     }
 };
 
+// --- COMPONENTES AUXILIARES PARA VISTA BACKSTAGE ---
+
+// Componente de Vista "Guardar como"
+const SaveAsView: React.FC<{
+    docState: DocumentState;
+    handleSaveAs: (fileName: string, format: string) => void;
+    onClose: () => void;
+}> = ({ docState, handleSaveAs, onClose }) => {
+    // Hooks locales para esta vista, llamados incondicionalmente
+    const [newFileName, setNewFileName] = useState(docState.fileName);
+    const [format, setFormat] = useState('excel');
+
+    const onSave = () => {
+        handleSaveAs(newFileName, format);
+        onClose(); // Cerrar la vista de Guardar como y el Backstage
+    }
+
+    return (
+        <div className="absolute inset-0 bg-gray-900 dark:bg-[#1e1e1e] p-10 z-50 overflow-auto text-white">
+            <h2 className="text-3xl font-light mb-8">Guardar como</h2>
+            <div className="bg-gray-800 dark:bg-gray-700 p-6 rounded-lg max-w-xl space-y-4">
+                <p className="text-lg">Nombre del Archivo:</p>
+                <input
+                    type="text"
+                    className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                />
+                <p className="text-lg">Tipo de Archivo:</p>
+                <select
+                    className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value)}
+                >
+                    <option value="excel">Libro de Excel (*.xlsx)</option>
+                    <option value="pacur">Archivo PacurHoja (*.pacur)</option>
+                    <option value="csv">CSV (Delimitado por comas) (*.csv)</option>
+                </select>
+                <div className="flex justify-end space-x-3 pt-4">
+                     <button
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold"
+                        onClick={onSave}
+                    >
+                        Guardar
+                    </button>
+                    <button
+                        className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md"
+                        onClick={onClose}
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Componente de Vista "Imprimir"
+const PrintView: React.FC<{
+    printSettings: PrintSettings;
+    setPrintSettings: React.Dispatch<React.SetStateAction<PrintSettings>>;
+    onClose: () => void;
+}> = ({ printSettings, setPrintSettings, onClose }) => {
+
+    const isValidRange = (range: string) => {
+        return range === 'Hoja actual' || /^[A-Z]+\d+:[A-Z]+\d+$/i.test(range);
+    }
+
+    const handlePrint = () => {
+        if(isValidRange(printSettings.range)) {
+            // Usar console.log en lugar de alert()
+            console.log(`[ALERTA] Simulando imprimir rango: ${printSettings.range} en orientación ${printSettings.orientation}.`);
+        } else {
+            // Usar console.log en lugar de alert()
+            console.log('[ALERTA] Rango de impresión inválido.');
+        }
+    }
+
+    return (
+        <div className="absolute inset-0 bg-gray-900 dark:bg-[#1e1e1e] p-10 z-50 overflow-auto text-white flex">
+            {/* Panel de Configuración de Impresión (Izquierda) */}
+            <div className="w-1/4 bg-gray-800 dark:bg-gray-700 p-6 space-y-6 flex flex-col justify-between">
+                <div>
+                    <h2 className="text-2xl font-semibold mb-4 border-b border-gray-600 pb-2">Imprimir</h2>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Imprimir:</label>
+                            <select
+                                className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
+                                value={printSettings.range}
+                                onChange={(e) => setPrintSettings(p => ({ ...p, range: e.target.value }))}
+                            >
+                                <option value="Hoja actual">Hoja actual</option>
+                                <option value="Selección">Selección</option>
+                                <option value="Rango personalizado">Rango personalizado...</option>
+                            </select>
+                            {printSettings.range === 'Rango personalizado' && (
+                                <input
+                                    type="text"
+                                    className="w-full mt-2 p-2 bg-gray-600 border border-gray-500 rounded text-white text-sm"
+                                    placeholder="Ej: A1:G5"
+                                    value={printSettings.range}
+                                    onChange={(e) => setPrintSettings(p => ({ ...p, range: e.target.value }))}
+                                />
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Orientación:</label>
+                            <select
+                                className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
+                                value={printSettings.orientation}
+                                onChange={(e) => setPrintSettings(p => ({ ...p, orientation: e.target.value as 'vertical' | 'horizontal' }))}
+                            >
+                                <option value="vertical">Vertical</option>
+                                <option value="horizontal">Horizontal</option>
+                            </select>
+                        </div>
+                        <div className="text-xs text-gray-400 pt-4">
+                            Ejemplo de rango personalizado: **A1:G5** imprime el área de A1 a G5.
+                        </div>
+                    </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-600">
+                     <button
+                        className={`w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold ${!isValidRange(printSettings.range) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={handlePrint}
+                        disabled={!isValidRange(printSettings.range)}
+                    >
+                        Imprimir
+                    </button>
+                    <button
+                        className="w-full mt-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md"
+                        onClick={onClose}
+                    >
+                        Cerrar Vista Previa
+                    </button>
+                </div>
+            </div>
+            {/* Vista Previa de Impresión (Derecha) */}
+            <div className="flex-1 ml-6 p-4 bg-gray-200 dark:bg-gray-800 rounded-lg overflow-hidden">
+                <div className={`w-full h-full bg-white dark:bg-gray-900 border border-dashed border-gray-400 flex items-center justify-center text-gray-500 ${printSettings.orientation === 'horizontal' ? 'aspect-video' : 'aspect-[3/4]'}`}>
+                    Vista Previa de Impresión ({printSettings.range})
+                </div>
+            </div>
+         </div>
+    );
+};
+
 
 // --- COMPONENTE PRINCIPAL PacurHoja ---
 
@@ -199,9 +346,6 @@ const PacurHoja: React.FC = () => {
     });
     const menuRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-
-    // Definición de estilos estáticos (Corrige TS18004)
-    const styles: React.CSSProperties = {}; 
 
     // --- EFECTOS DE CONTROL ---
 
@@ -449,132 +593,24 @@ const PacurHoja: React.FC = () => {
      * Componente para dibujar la vista Backstage (Archivo)
      */
     const renderBackstage = () => {
+        // [CORRECCIÓN] Ahora renderiza los nuevos componentes condicionalmente
         if (saveAsVisible) {
-            // Interfaz de Guardar Como
-            const [newFileName, setNewFileName] = useState(docState.fileName);
-            const [format, setFormat] = useState('excel');
             return (
-                <div className="absolute inset-0 bg-gray-900 dark:bg-[#1e1e1e] p-10 z-50 overflow-auto text-white">
-                    <h2 className="text-3xl font-light mb-8">Guardar como</h2>
-                    <div className="bg-gray-800 dark:bg-gray-700 p-6 rounded-lg max-w-xl space-y-4">
-                        <p className="text-lg">Nombre del Archivo:</p>
-                        <input
-                            type="text"
-                            className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
-                            value={newFileName}
-                            onChange={(e) => setNewFileName(e.target.value)}
-                        />
-                        <p className="text-lg">Tipo de Archivo:</p>
-                        <select
-                            className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
-                            value={format}
-                            onChange={(e) => setFormat(e.target.value)}
-                        >
-                            <option value="excel">Libro de Excel (*.xlsx)</option>
-                            <option value="pacur">Archivo PacurHoja (*.pacur)</option>
-                            <option value="csv">CSV (Delimitado por comas) (*.csv)</option>
-                        </select>
-                        <div className="flex justify-end space-x-3 pt-4">
-                             <button
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold"
-                                onClick={() => handleSaveAs(newFileName, format)}
-                            >
-                                Guardar
-                            </button>
-                            <button
-                                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md"
-                                onClick={() => setSaveAsVisible(false)}
-                            >
-                                Cancelar
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <SaveAsView
+                    docState={docState}
+                    handleSaveAs={handleSaveAs}
+                    onClose={() => { setSaveAsVisible(false); setBackstageVisible(false); }}
+                />
             );
         }
 
         if (printVisible) {
-             // Interfaz de Imprimir
-             const isValidRange = (range: string) => {
-                 return range === 'Hoja actual' || /^[A-Z]+\d+:[A-Z]+\d+$/i.test(range);
-             }
-
              return (
-                 <div className="absolute inset-0 bg-gray-900 dark:bg-[#1e1e1e] p-10 z-50 overflow-auto text-white flex">
-                    {/* Panel de Configuración de Impresión (Izquierda) */}
-                    <div className="w-1/4 bg-gray-800 dark:bg-gray-700 p-6 space-y-6 flex flex-col justify-between">
-                        <div>
-                            <h2 className="text-2xl font-semibold mb-4 border-b border-gray-600 pb-2">Imprimir</h2>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Imprimir:</label>
-                                    <select
-                                        className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
-                                        value={printSettings.range}
-                                        onChange={(e) => setPrintSettings(p => ({ ...p, range: e.target.value }))}
-                                    >
-                                        <option value="Hoja actual">Hoja actual</option>
-                                        <option value="Selección">Selección</option>
-                                        <option value="Rango personalizado">Rango personalizado...</option>
-                                    </select>
-                                    {printSettings.range === 'Rango personalizado' && (
-                                        <input
-                                            type="text"
-                                            className="w-full mt-2 p-2 bg-gray-600 border border-gray-500 rounded text-white text-sm"
-                                            placeholder="Ej: A1:G5"
-                                            value={printSettings.range}
-                                            onChange={(e) => setPrintSettings(p => ({ ...p, range: e.target.value }))}
-                                        />
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Orientación:</label>
-                                    <select
-                                        className="w-full p-2 bg-gray-600 border border-gray-500 rounded text-white"
-                                        value={printSettings.orientation}
-                                        onChange={(e) => setPrintSettings(p => ({ ...p, orientation: e.target.value as 'vertical' | 'horizontal' }))}
-                                    >
-                                        <option value="vertical">Vertical</option>
-                                        <option value="horizontal">Horizontal</option>
-                                    </select>
-                                </div>
-                                <div className="text-xs text-gray-400 pt-4">
-                                    Ejemplo de rango personalizado: **1A:5G** imprime el área de A1 a G5.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="pt-6 border-t border-gray-600">
-                             <button
-                                className={`w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold ${!isValidRange(printSettings.range) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                onClick={() => {
-                                    if(isValidRange(printSettings.range)) {
-                                        // Usar console.log en lugar de alert()
-                                        console.log(`[ALERTA] Simulando imprimir rango: ${printSettings.range} en orientación ${printSettings.orientation}.`);
-                                    } else {
-                                        // Usar console.log en lugar de alert()
-                                        console.log('[ALERTA] Rango de impresión inválido.');
-                                    }
-                                }}
-                                disabled={!isValidRange(printSettings.range)}
-                            >
-                                Imprimir
-                            </button>
-                            <button
-                                className="w-full mt-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-md"
-                                onClick={() => setPrintVisible(false)}
-                            >
-                                Cerrar Vista Previa
-                            </button>
-                        </div>
-                    </div>
-                    {/* Vista Previa de Impresión (Derecha) */}
-                    <div className="flex-1 ml-6 p-4 bg-gray-200 dark:bg-gray-800 rounded-lg overflow-hidden">
-                        <div className={`w-full h-full bg-white dark:bg-gray-900 border border-dashed border-gray-400 flex items-center justify-center text-gray-500 ${printSettings.orientation === 'horizontal' ? 'aspect-video' : 'aspect-[3/4]'}`}>
-                            Vista Previa de Impresión ({printSettings.range})
-                        </div>
-                    </div>
-                 </div>
+                 <PrintView
+                    printSettings={printSettings}
+                    setPrintSettings={setPrintSettings}
+                    onClose={() => setPrintVisible(false)}
+                 />
              );
         }
 
@@ -653,17 +689,17 @@ const PacurHoja: React.FC = () => {
         const cellData = activeCell ? sheetData[activeCell] : null;
         const currentStyles = cellData?.styles || {};
 
-        const renderButton = (label: string, icon: string, action: () => void, isActive: boolean = false, className: string = '') => (
+        const renderButton = (label: string, iconName: string, action: () => void, isActive: boolean = false, className: string = '') => (
             <button
                 title={label}
                 className={`p-2 rounded-md transition duration-150 ${isActive ? 'bg-indigo-700 text-white' : 'hover:bg-gray-600 text-gray-200'} ${className}`}
                 onClick={action}
             >
-                <i className={`fas fa-${icon}`}></i>
+                <i className={`fas fa-${iconName}`}></i>
             </button>
         );
 
-        const renderDropdown = (label: string, items: { label: string, action: () => void }[], icon: string) => {
+        const renderDropdown = (label: string, items: { label: string, action: () => void }[], iconName: string) => {
              const [isOpen, setIsOpen] = useState(false);
              const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -685,7 +721,7 @@ const PacurHoja: React.FC = () => {
                          className="p-2 rounded-md hover:bg-gray-600 text-gray-200 flex items-center"
                          onClick={() => setIsOpen(!isOpen)}
                      >
-                         <i className={`fas fa-${icon}`}></i>
+                         <i className={`fas fa-${iconName}`}></i>
                          <i className="fas fa-caret-down ml-1 text-xs"></i>
                      </button>
                      {isOpen && (
@@ -705,7 +741,7 @@ const PacurHoja: React.FC = () => {
              );
         };
 
-        const renderColorPicker = (label: string, icon: string, styleKey: 'backgroundColor' | 'color') => {
+        const renderColorPicker = (label: string, iconName: string, styleKey: 'backgroundColor' | 'color') => {
             const [color, setColor] = useState(currentStyles[styleKey] || '#ffffff');
             const colorRef = useRef<HTMLInputElement>(null);
 
@@ -999,9 +1035,6 @@ const PacurHoja: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen w-full bg-[#1e1e1e] font-sans">
-            {/* CORRECCIÓN: Se eliminan los atributos 'jsx' y 'global' de la etiqueta <style>
-                para evitar la advertencia: "Received `true` for a non-boolean attribute `jsx`."
-            */}
             <style>{`
                 /* Estilos globales para la hoja de cálculo */
                 body {
